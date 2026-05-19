@@ -12,10 +12,6 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-packages:
-  Sparkle:
-    url: https://github.com/sparkle-project/Sparkle
-    from: "2.6.0"
 targets:
   Writey:
     type: application
@@ -23,15 +19,7 @@ targets:
     sources:
       - path: Sources/Writey
         excludes:
-          - "Config/Secrets.template.xcconfig"
-          - "Config/Secrets.xcconfig"
-          - "Config/Base.xcconfig"
-    dependencies:
-      - package: Sparkle
-        product: Sparkle
-    configFiles:
-      Debug: Sources/Writey/Config/Base.xcconfig
-      Release: Sources/Writey/Config/Base.xcconfig
+          - "**/*.template.swift"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writey.Writey
@@ -48,14 +36,6 @@ targets:
       properties:
         NSSupportsAutomaticTermination: true
         NSSupportsSuddenTermination: true
-        # OAuth values come from Base.xcconfig (← Secrets.xcconfig)
-        OAuthClientID: $(OAUTH_CLIENT_ID)
-        OAuthRedirectScheme: $(OAUTH_REDIRECT_SCHEME)
-        # Sparkle reads these directly from Info.plist
-        SUFeedURL: $(SU_FEED_URL)
-        SUPublicEDKey: $(SU_PUBLIC_ED_KEY)
-        SUEnableInstallerLauncherService: true
-        SUEnableAutomaticChecks: true
         CFBundleDocumentTypes:
           - CFBundleTypeName: Rich Text Document
             CFBundleTypeRole: Editor
@@ -73,4 +53,4 @@ targets:
           - CFBundleURLName: com.writey.Writey.oauth
             CFBundleTypeRole: Viewer
             CFBundleURLSchemes:
-              - $(OAUTH_REDIRECT_SCHEME)
+              - com.writey.Writey

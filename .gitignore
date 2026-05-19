@@ -22,9 +22,9 @@ Package.resolved
 *.swp
 *.swo
 
-# Secrets — real OAuth client IDs etc. NEVER commit.
-Sources/Writey/Config/Secrets.xcconfig
+# Secrets — your real OAuth client ID lives here. Never commit.
+# (The committed SyncConfig.template.swift documents the shape.)
+Sources/Writey/Sync/SyncConfig.swift
 
-# Sparkle private keys exported for CI — NEVER commit.
-sparkle_private_key
-*.eddsa_priv
+# Local DMG builds
+Writey-*.dmg

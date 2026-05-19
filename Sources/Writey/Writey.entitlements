@@ -12,16 +12,5 @@
     <true/>
     <key>com.apple.security.application-groups</key>
     <array/>
-    <!--
-        Sparkle requires these mach-lookup exceptions to talk to its
-        installer launcher XPC service from within the sandbox. The
-        $(PRODUCT_BUNDLE_IDENTIFIER) substitution is performed by Xcode
-        at build time, expanding to com.writey.Writey at runtime.
-    -->
-    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-    <array>
-        <string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
-        <string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
-    </array>
 </dict>
 </plist>
