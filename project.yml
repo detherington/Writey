@@ -1,0 +1,54 @@
+name: Writey
+options:
+  bundleIdPrefix: com.writey
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+targets:
+  Writey:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Writey
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.writey.Writey
+        PRODUCT_NAME: Writey
+        CODE_SIGN_ENTITLEMENTS: Sources/Writey/Writey.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: Writey
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        GENERATE_INFOPLIST_FILE: YES
+        COMBINE_HIDPI_IMAGES: YES
+    info:
+      path: Sources/Writey/Info.plist
+      properties:
+        NSSupportsAutomaticTermination: true
+        NSSupportsSuddenTermination: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Rich Text Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.rtf
+            NSDocumentClass: ""
+          - CFBundleTypeName: Plain Text Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
+            NSDocumentClass: ""
+        CFBundleURLTypes:
+          - CFBundleURLName: com.writey.Writey.oauth
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes:
+              - com.writey.Writey
