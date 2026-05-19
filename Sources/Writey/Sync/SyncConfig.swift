@@ -2,32 +2,34 @@ import Foundation
 
 /// Google OAuth + Drive API configuration.
 ///
+/// Real values are *not* in this file. They live in
+/// `Sources/Writey/Config/Secrets.xcconfig` (gitignored), flow through
+/// `Base.xcconfig` → Xcode build settings → Info.plist substitution, and
+/// are read at runtime from `Bundle.main.infoDictionary`.
+///
 /// SETUP:
-/// 1. Go to https://console.cloud.google.com/apis/credentials
-/// 2. Create an OAuth 2.0 Client ID. Pick application type "iOS" (which
-///    accepts a custom URL scheme as the redirect URI).
-/// 3. Set the bundle ID to `com.writey.Writey` (matches project.yml).
-/// 4. Enable the **Google Drive API** for your project.
-/// 5. Paste the client ID below.
+/// 1. https://console.cloud.google.com/apis/credentials — create an
+///    OAuth 2.0 Client ID, type "iOS", bundle ID `com.writey.Writey`.
+///    Enable the Google Drive API.
+/// 2. `cp Sources/Writey/Config/Secrets.template.xcconfig
+///        Sources/Writey/Config/Secrets.xcconfig`
+/// 3. Edit `Secrets.xcconfig` and paste your real client ID + the
+///    reverse-domain redirect scheme it suggests.
+/// 4. `xcodegen generate` and rebuild.
 ///
-/// The custom redirect URI Google expects (and that we register in
-/// project.yml's CFBundleURLTypes) is the reversed client ID:
-///
-///   com.googleusercontent.apps.<CLIENT_ID_PREFIX>:/oauth2redirect
-///
-/// PKCE is used so no client secret is required.
+/// PKCE is used end-to-end, so no client secret is required or stored.
 enum SyncConfig {
-    /// e.g. "1234567890-abcdefg.apps.googleusercontent.com"
-    static let googleOAuthClientID: String = ""
+    static var googleOAuthClientID: String {
+        infoString("OAuthClientID") ?? ""
+    }
 
-    /// e.g. "com.googleusercontent.apps.1234567890-abcdefg"
-    /// Must also appear in `Info.plist` -> CFBundleURLTypes.
-    static let googleOAuthRedirectScheme: String = ""
+    static var googleOAuthRedirectScheme: String {
+        infoString("OAuthRedirectScheme") ?? ""
+    }
 
     /// We use the narrow `drive.file` scope so Writey only sees Docs it
     /// created or that the user explicitly opens with it — never the
-    /// user's entire Drive. Add `userinfo.email` so we can show who's
-    /// signed in.
+    /// user's entire Drive. `userinfo.email` lets us show who's signed in.
     static let scopes: [String] = [
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/userinfo.email"
@@ -38,6 +40,17 @@ enum SyncConfig {
     }
 
     static var isConfigured: Bool {
-        !googleOAuthClientID.isEmpty && !googleOAuthRedirectScheme.isEmpty
+        !googleOAuthClientID.isEmpty &&
+            googleOAuthClientID != "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com" &&
+            !googleOAuthRedirectScheme.isEmpty &&
+            googleOAuthRedirectScheme.hasPrefix("com.googleusercontent.apps.")
+    }
+
+    private static func infoString(_ key: String) -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
+              !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 }

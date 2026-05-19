@@ -21,3 +21,10 @@ Package.resolved
 *.xcuserstate
 *.swp
 *.swo
+
+# Secrets — real OAuth client IDs etc. NEVER commit.
+Sources/Writey/Config/Secrets.xcconfig
+
+# Sparkle private keys exported for CI — NEVER commit.
+sparkle_private_key
+*.eddsa_priv

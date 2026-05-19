@@ -58,6 +58,22 @@ struct SyncCommands: Commands {
     }
 }
 
+/// "Check for Updates…" lives in the standard Apple-menu / appInfo group,
+/// just below "About Writey", matching the convention every native macOS
+/// app follows.
+struct UpdateCommands: Commands {
+    @ObservedObject var updater: UpdaterService
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheckForUpdates)
+        }
+    }
+}
+
 /// View menu — distraction-free mode toggle.
 ///
 /// The menu command broadcasts a notification rather than mutating a

@@ -4,6 +4,7 @@ import SwiftUI
 struct WriteyApp: App {
     @StateObject private var theme = ThemeManager()
     @StateObject private var auth = GoogleAuth()
+    @StateObject private var updater = UpdaterService()
 
     init() {
         ThemeManager.applyOnLaunch()
@@ -20,6 +21,7 @@ struct WriteyApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Writey") { NSApp.orderFrontStandardAboutPanel(nil) }
             }
+            UpdateCommands(updater: updater)
             ThemeCommands(theme: theme)
             FormatCommands()
             ViewCommands()

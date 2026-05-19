@@ -56,7 +56,7 @@
 			<string>com.writey.Writey.oauth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.writey.Writey</string>
+				<string>$(OAUTH_REDIRECT_SCHEME)</string>
 			</array>
 		</dict>
 	</array>
@@ -66,5 +66,17 @@
 	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
+	<key>OAuthClientID</key>
+	<string>$(OAUTH_CLIENT_ID)</string>
+	<key>OAuthRedirectScheme</key>
+	<string>$(OAUTH_REDIRECT_SCHEME)</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>$(SU_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SU_PUBLIC_ED_KEY)</string>
 </dict>
 </plist>

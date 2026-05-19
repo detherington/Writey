@@ -1,0 +1,223 @@
+name: Release
+
+# Triggered when you push a tag like `v0.2.0`. Builds the app, signs the
+# update with Sparkle, packages a DMG, generates appcast.xml, and uploads
+# everything as a GitHub Release asset.
+#
+# Required GitHub Actions secrets:
+#   SPARKLE_PRIVATE_KEY   Base64 contents of your Sparkle ed25519 private key.
+#                         Export locally with:
+#                            generate_keys -x sparkle_private_key
+#                            cat sparkle_private_key   # paste into secret
+#   OAUTH_CLIENT_ID       Your Google OAuth client ID
+#   OAUTH_REDIRECT_SCHEME Reversed OAuth client ID (com.googleusercontent.apps.…)
+#
+# Optional (enable Apple Developer ID signing + notarization for a smooth
+# install experience — without these, users get a Gatekeeper warning that
+# they have to right-click → Open to bypass once):
+#   APPLE_DEVELOPER_ID_CERT_P12       Base64-encoded .p12 of your Developer ID Application cert
+#   APPLE_DEVELOPER_ID_CERT_PASSWORD  Password protecting the .p12
+#   APPLE_DEVELOPER_ID_IDENTITY       e.g. "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID                          Your Apple ID email
+#   APPLE_TEAM_ID                     10-character team ID
+#   APPLE_APP_SPECIFIC_PASSWORD       From appleid.apple.com
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Derive version
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"           # e.g. v0.2.0
+          VERSION="${TAG#v}"                 # 0.2.0
+          BUILD="${{ github.run_number }}"   # monotonically increasing
+          echo "tag=$TAG"          >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"  >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD"      >> "$GITHUB_OUTPUT"
+
+      - name: Write Secrets.xcconfig
+        env:
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_REDIRECT_SCHEME: ${{ secrets.OAUTH_REDIRECT_SCHEME }}
+        run: |
+          cat > Sources/Writey/Config/Secrets.xcconfig <<EOF
+          OAUTH_CLIENT_ID = ${OAUTH_CLIENT_ID}
+          OAUTH_REDIRECT_SCHEME = ${OAUTH_REDIRECT_SCHEME}
+          EOF
+
+      - name: Patch version into project.yml
+        run: |
+          # Override MARKETING_VERSION and CURRENT_PROJECT_VERSION for this build.
+          /usr/bin/sed -i '' "s/MARKETING_VERSION: \".*\"/MARKETING_VERSION: \"${{ steps.version.outputs.version }}\"/" project.yml
+          /usr/bin/sed -i '' "s/CURRENT_PROJECT_VERSION: \".*\"/CURRENT_PROJECT_VERSION: \"${{ steps.version.outputs.build }}\"/" project.yml
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # ---- Optional: import Developer ID cert + sign with it ----
+      - name: Import Developer ID certificate
+        if: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12 != '' }}
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          P12_PATH="$RUNNER_TEMP/cert.p12"
+          echo "$P12_BASE64" | base64 -d > "$P12_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$P12_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed s/\"//g)
+
+      - name: Build & archive
+        env:
+          IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+        run: |
+          if [ -n "$IDENTITY" ]; then
+            CODE_SIGN_ARGS="CODE_SIGN_IDENTITY=$IDENTITY CODE_SIGN_STYLE=Manual"
+          else
+            CODE_SIGN_ARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual"
+          fi
+          xcodebuild \
+            -project Writey.xcodeproj \
+            -scheme Writey \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            $CODE_SIGN_ARGS \
+            build
+
+      - name: Locate built app
+        id: app
+        run: |
+          APP_PATH=$(find build/Build/Products/Release -maxdepth 2 -name "Writey.app" -type d | head -1)
+          echo "Found app at $APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+
+      # ---- Notarize (optional) ----
+      - name: Notarize app
+        if: ${{ secrets.APPLE_ID != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          APP_PATH="${{ steps.app.outputs.path }}"
+          ZIP_PATH="$RUNNER_TEMP/Writey-notarize.zip"
+          /usr/bin/ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+          xcrun notarytool submit "$ZIP_PATH" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple "$APP_PATH"
+
+      # ---- Build DMG ----
+      - name: Build DMG
+        id: dmg
+        run: |
+          APP_PATH="${{ steps.app.outputs.path }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG_NAME="Writey-$VERSION.dmg"
+          STAGING="$RUNNER_TEMP/dmg-staging"
+          mkdir -p "$STAGING"
+          cp -R "$APP_PATH" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create \
+            -srcfolder "$STAGING" \
+            -volname "Writey" \
+            -fs APFS \
+            -format UDZO \
+            -ov \
+            "$DMG_NAME"
+          echo "name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+          echo "path=$PWD/$DMG_NAME" >> "$GITHUB_OUTPUT"
+          echo "length=$(stat -f%z "$DMG_NAME")" >> "$GITHUB_OUTPUT"
+
+      # ---- Sign DMG with Sparkle ----
+      - name: Sign update with Sparkle
+        id: sparkle
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          # sign_update lives inside the resolved Sparkle SPM artifact
+          SIGN_UPDATE=$(find build/SourcePackages/artifacts -name sign_update -type f | head -1)
+          if [ -z "$SIGN_UPDATE" ]; then
+            SIGN_UPDATE=$(find ~/Library/Developer/Xcode/DerivedData -name sign_update -type f | head -1)
+          fi
+          echo "Using sign_update at $SIGN_UPDATE"
+          SIG_OUTPUT=$(echo "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "${{ steps.dmg.outputs.path }}")
+          echo "Sparkle output: $SIG_OUTPUT"
+          # sign_update output looks like:  sparkle:edSignature="…" length="…"
+          ED_SIG=$(echo "$SIG_OUTPUT" | sed -E 's/.*sparkle:edSignature="([^"]+)".*/\1/')
+          echo "ed_signature=$ED_SIG" >> "$GITHUB_OUTPUT"
+
+      # ---- Generate appcast.xml ----
+      - name: Generate appcast.xml
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILD="${{ steps.version.outputs.build }}"
+          DMG_NAME="${{ steps.dmg.outputs.name }}"
+          LENGTH="${{ steps.dmg.outputs.length }}"
+          ED_SIG="${{ steps.sparkle.outputs.ed_signature }}"
+          PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/$DMG_NAME"
+          cat > appcast.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Writey</title>
+              <link>https://github.com/${{ github.repository }}</link>
+              <description>Writey app updates</description>
+              <language>en</language>
+              <item>
+                <title>Version $VERSION</title>
+                <link>https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}</link>
+                <sparkle:releaseNotesLink>https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}</sparkle:releaseNotesLink>
+                <pubDate>$PUB_DATE</pubDate>
+                <enclosure
+                  url="$DOWNLOAD_URL"
+                  sparkle:version="$BUILD"
+                  sparkle:shortVersionString="$VERSION"
+                  sparkle:minimumSystemVersion="14.0"
+                  sparkle:edSignature="$ED_SIG"
+                  length="$LENGTH"
+                  type="application/octet-stream"/>
+              </item>
+            </channel>
+          </rss>
+          EOF
+          cat appcast.xml
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.dmg.outputs.path }}
+            appcast.xml
