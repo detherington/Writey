@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.writey
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 settings:
@@ -12,19 +13,23 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
+
 targets:
+
+  # ===== macOS =====
   Writey:
     type: application
     platform: macOS
     sources:
-      - path: Sources/Writey
+      - path: Sources/Writey/Core
         excludes:
           - "**/*.template.swift"
+      - path: Sources/Writey/macOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writey.Writey
         PRODUCT_NAME: Writey
-        CODE_SIGN_ENTITLEMENTS: Sources/Writey/Writey.entitlements
+        CODE_SIGN_ENTITLEMENTS: Sources/Writey/macOS/Writey.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Writey
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
@@ -33,7 +38,7 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
-      path: Sources/Writey/Info.plist
+      path: Sources/Writey/macOS/Info.plist
       properties:
         NSSupportsAutomaticTermination: true
         NSSupportsSuddenTermination: true
@@ -50,6 +55,53 @@ targets:
             LSItemContentTypes:
               - public.plain-text
             NSDocumentClass: ""
+        CFBundleURLTypes:
+          - CFBundleURLName: com.writey.Writey.oauth
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.577786438263-sstr9776vffvfgirv665kr227gmrk1cs
+
+  # ===== iOS (iPad) =====
+  Writey-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/Writey/Core
+        excludes:
+          - "**/*.template.swift"
+      - path: Sources/Writey/iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.writey.Writey
+        PRODUCT_NAME: Writey
+        TARGETED_DEVICE_FAMILY: "1,2"      # iPhone + iPad — universal
+        INFOPLIST_KEY_CFBundleDisplayName: Writey
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Enable Files-app integration so users can open .rtf documents
+        # in Writey, and the DocumentGroup-managed files appear in
+        # iCloud Drive / On My iPad.
+        INFOPLIST_KEY_UISupportsDocumentBrowser: YES
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+    info:
+      path: Sources/Writey/iOS/Info.plist
+      properties:
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Rich Text Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.rtf
+          - CFBundleTypeName: Plain Text Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
         CFBundleURLTypes:
           - CFBundleURLName: com.writey.Writey.oauth
             CFBundleTypeRole: Viewer

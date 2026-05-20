@@ -1,21 +1,7 @@
 import SwiftUI
 import AppKit
 
-enum AppTheme: String, CaseIterable, Identifiable {
-    case system
-    case light
-    case dark
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .system: return "Match System"
-        case .light:  return "Light"
-        case .dark:   return "Dark (True Black)"
-        }
-    }
-}
+// AppTheme lives in Core/Theme/AppTheme.swift — shared with the iOS target.
 
 /// Centralised light/dark/true-black theming.
 ///
