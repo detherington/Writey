@@ -36,6 +36,28 @@ struct EditorToolbar: View {
 
             Spacer()
 
+            Menu {
+                ForEach(AppTheme.allCases) { option in
+                    Button {
+                        theme.theme = option
+                    } label: {
+                        HStack {
+                            Text(option.label)
+                            if theme.theme == option {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: themeIcon)
+                    .frame(width: 28, height: 28)
+                    .padding(6)
+            }
+            .menuStyle(.borderlessButton)
+            .help("Appearance")
+
             Button {
                 showingSyncSheet = true
             } label: {
@@ -66,6 +88,17 @@ struct EditorToolbar: View {
         if !auth.isSignedIn { return "Connect" }
         if sync.isLinked(fileURL: fileURL) { return "Sync" }
         return "Link"
+    }
+
+    /// Icon reflects the *effective* theme (so "Match System" shows the
+    /// resolved appearance), but the menu shows what the user actually
+    /// picked via the checkmark.
+    private var themeIcon: String {
+        switch theme.theme {
+        case .system: return "circle.lefthalf.filled"
+        case .light:  return "sun.max"
+        case .dark:   return "moon.fill"
+        }
     }
 }
 

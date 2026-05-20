@@ -12,6 +12,9 @@ struct WriteyApp: App {
                 .environmentObject(auth)
                 .preferredColorScheme(theme.preferredColorScheme)
         }
+        .commands {
+            ThemeCommands(theme: theme)
+        }
         // No `Settings` scene on iOS — settings are reached via an in-app
         // sheet from the toolbar.
     }
