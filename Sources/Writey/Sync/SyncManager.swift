@@ -182,8 +182,14 @@ final class SyncManager: ObservableObject {
     // MARK: - Helpers
 
     private func fingerprint(of attr: NSAttributedString) -> String {
-        let range = NSRange(location: 0, length: attr.length)
-        let data = (try? attr.data(
+        // Fingerprint the canonical form (no theme colors). Otherwise the
+        // fingerprint would change every time the user toggles light/dark
+        // mode, since switching themes re-bakes a different .foregroundColor
+        // attribute across the whole storage — and the sync layer would
+        // think the user had typed something.
+        let canonical = attr.writeyCanonicalForm()
+        let range = NSRange(location: 0, length: canonical.length)
+        let data = (try? canonical.data(
             from: range,
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
         )) ?? Data()

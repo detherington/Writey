@@ -61,11 +61,15 @@ final class WriteyDocument: ReferenceFileDocument {
     }
 
     func snapshot(contentType: UTType) throws -> Data {
-        let range = NSRange(location: 0, length: attributedText.length)
+        // Strip theme-only colors before persisting — what's on disk should
+        // be portable (open it in TextEdit / Pages and it renders in the
+        // app's default colors, not Writey's dark-mode grey).
+        let canonical = attributedText.writeyCanonicalForm()
+        let range = NSRange(location: 0, length: canonical.length)
         let attrs: [NSAttributedString.DocumentAttributeKey: Any] = [
             .documentType: NSAttributedString.DocumentType.rtf
         ]
-        return try attributedText.data(from: range, documentAttributes: attrs)
+        return try canonical.data(from: range, documentAttributes: attrs)
     }
 
     func fileWrapper(snapshot: Data, configuration: WriteConfiguration) throws -> FileWrapper {
