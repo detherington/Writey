@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "3"
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
 
@@ -74,6 +74,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writey.Writey
         PRODUCT_NAME: Writey
+        DEVELOPMENT_TEAM: 8B29CDK832       # Paid Apple Developer Program team
         TARGETED_DEVICE_FAMILY: "1,2"      # iPhone + iPad — universal
         INFOPLIST_KEY_CFBundleDisplayName: Writey
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity

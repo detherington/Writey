@@ -1,0 +1,55 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.88593,0.50943,0.22759,1.00000",
+      "srgb:0.75816,0.00000,0.00703,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
+  },
+  "groups" : [
+    {
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode" : "darken",
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "AdobeStock_753027123.png",
+          "name" : "AdobeStock_753027123",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.4,
+            "translation-in-points" : [
+              0.20000000000004547,
+              176.9453125
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
