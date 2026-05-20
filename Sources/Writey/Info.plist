@@ -56,7 +56,7 @@
 			<string>com.writey.Writey.oauth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.writey.Writey</string>
+				<string>com.googleusercontent.apps.577786438263-sstr9776vffvfgirv665kr227gmrk1cs</string>
 			</array>
 		</dict>
 	</array>
