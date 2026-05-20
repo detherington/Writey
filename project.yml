@@ -91,6 +91,10 @@ targets:
     info:
       path: Sources/Writey/iOS/Info.plist
       properties:
+        # Writey only does HTTPS — TLS is exempt from US export
+        # encryption regs, so saying so here saves you clicking through
+        # the encryption-compliance dialog on every TestFlight upload.
+        ITSAppUsesNonExemptEncryption: false
         CFBundleDocumentTypes:
           - CFBundleTypeName: Rich Text Document
             CFBundleTypeRole: Editor
