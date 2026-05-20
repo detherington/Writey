@@ -4,16 +4,21 @@ import Foundation
 /// Google Doc file ID.
 ///
 /// Stored at `~/Library/Application Support/Writey/links.json`, keyed by
-/// the document's own stable `documentID` (which we round-trip into RTF
-/// metadata). This means the link survives renames and moves.
+/// the local file's absolute path. We initially tried to round-trip a
+/// per-document UUID through RTF metadata, but Cocoa's RTF writer silently
+/// drops custom document-attribute keys (it only honors a fixed allowlist
+/// — .title, .author, .keywords, …), so every reopen minted a fresh UUID
+/// and the link looked lost. Keying by path is robust to closing and
+/// reopening; moving / renaming the file breaks the link, in which case
+/// the user re-links from the sync sheet.
 struct SyncLink: Codable {
-    var documentID: String
+    /// Absolute, standardized path of the local document this link
+    /// belongs to. Primary key.
+    var localPath: String
     var googleFileID: String
-    /// The remote doc's `modifiedTime` (RFC 3339 string, e.g.
-    /// "2026-05-20T15:32:17.123Z") at the moment of our last sync.
-    /// We *used to* use `headRevisionId` here, but Drive API v3 does not
-    /// populate that field for Google Docs/Sheets/Slides — only for
-    /// arbitrary binary files. `modifiedTime` works for both.
+    /// The remote doc's `modifiedTime` (RFC 3339 string) at the moment of
+    /// our last sync. Drive API v3 does *not* populate `headRevisionId`
+    /// for Google Docs/Sheets/Slides — only for arbitrary binary files.
     var lastSyncedModifiedTime: String?
     var lastSyncedAt: Date?
     var localFingerprint: String?  // hash of the local RTF at last sync
@@ -43,6 +48,9 @@ final class SyncLinkStore {
         if let decoded = try? JSONDecoder().decode([String: SyncLink].self, from: data) {
             links = decoded
         }
+        // Pre-v0.2 entries (keyed by per-session UUID, with a `documentID`
+        // field) silently fail to decode here and are effectively dropped.
+        // Users re-link those documents once.
     }
 
     private func save() {
@@ -53,17 +61,21 @@ final class SyncLinkStore {
         }
     }
 
-    func link(for documentID: String) -> SyncLink? {
-        links[documentID]
+    static func key(for fileURL: URL) -> String {
+        fileURL.standardizedFileURL.path
+    }
+
+    func link(for fileURL: URL) -> SyncLink? {
+        links[Self.key(for: fileURL)]
     }
 
     func upsert(_ link: SyncLink) {
-        links[link.documentID] = link
+        links[link.localPath] = link
         save()
     }
 
-    func remove(documentID: String) {
-        links.removeValue(forKey: documentID)
+    func remove(fileURL: URL) {
+        links.removeValue(forKey: Self.key(for: fileURL))
         save()
     }
 }

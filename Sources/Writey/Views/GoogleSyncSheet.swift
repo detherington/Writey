@@ -17,7 +17,9 @@ struct GoogleSyncSheet: View {
 
             if !auth.isSignedIn {
                 signInPrompt
-            } else if let link = sync.currentLink(documentID: document.documentID) {
+            } else if fileURL == nil {
+                unsavedPrompt
+            } else if let link = sync.currentLink(fileURL: fileURL) {
                 linkedView(link: link)
             } else {
                 unlinkedView
@@ -46,7 +48,7 @@ struct GoogleSyncSheet: View {
                 .foregroundColor(.accentColor)
             VStack(alignment: .leading) {
                 Text("Google Docs Sync").font(.headline)
-                Text(fileURL?.lastPathComponent ?? "Untitled")
+                Text(fileURL?.lastPathComponent ?? "Untitled (unsaved)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -70,6 +72,16 @@ struct GoogleSyncSheet: View {
         }
     }
 
+    private var unsavedPrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Save this document first", systemImage: "exclamationmark.triangle")
+                .foregroundColor(.orange)
+            Text("Writey remembers the Google Doc link by the local file's path on disk. Save this document (⌘S) anywhere, then come back to link it.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
     private var unlinkedView: some View {
         VStack(alignment: .leading, spacing: 16) {
             GroupBox("Create a new Google Doc") {
@@ -81,6 +93,7 @@ struct GoogleSyncSheet: View {
                         Task {
                             await sync.createAndLink(
                                 document: document,
+                                fileURL: fileURL,
                                 auth: auth,
                                 suggestedName: fileURL?.deletingPathExtension().lastPathComponent ?? "Untitled"
                             )
@@ -106,6 +119,7 @@ struct GoogleSyncSheet: View {
                         Task {
                             await sync.attachExisting(
                                 document: document,
+                                fileURL: fileURL,
                                 auth: auth,
                                 fileID: id,
                                 pullAfterAttach: true
@@ -140,14 +154,14 @@ struct GoogleSyncSheet: View {
 
             HStack {
                 Button {
-                    Task { await sync.sync(document: document, auth: auth) }
+                    Task { await sync.sync(document: document, fileURL: fileURL, auth: auth) }
                 } label: {
                     Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(sync.isBusy)
 
                 Button(role: .destructive) {
-                    sync.unlink(document: document)
+                    sync.unlink(fileURL: fileURL)
                 } label: {
                     Label("Unlink", systemImage: "link.badge.plus")
                 }

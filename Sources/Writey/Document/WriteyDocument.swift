@@ -13,6 +13,11 @@ import AppKit
 /// underlying type is a reference (`NSAttributedString` mutated through a
 /// text view), and because `ReferenceFileDocument`'s snapshot model maps
 /// cleanly to the way NSTextView drives edits.
+///
+/// Google Doc linking is keyed by the file's path on disk (see
+/// `SyncLinkStore`), not by anything stored inside the document — Cocoa's
+/// RTF writer silently strips custom document-attribute keys, so any UUID
+/// we tried to round-trip through the file would be lost on every save.
 final class WriteyDocument: ReferenceFileDocument {
     typealias Snapshot = Data
 
@@ -26,17 +31,11 @@ final class WriteyDocument: ReferenceFileDocument {
 
     @Published var attributedText: NSAttributedString
 
-    /// Unique document identifier used by the sync-link store so we can
-    /// remember the Google Doc this document is linked to even if the file
-    /// is moved or renamed. Persisted into the RTF document attributes.
-    let documentID: String
-
     init() {
         self.attributedText = NSAttributedString(
             string: "",
             attributes: WriteyDocument.defaultBodyAttributes()
         )
-        self.documentID = UUID().uuidString
     }
 
     init(configuration: ReadConfiguration) throws {
@@ -50,33 +49,21 @@ final class WriteyDocument: ReferenceFileDocument {
                 string: text,
                 attributes: WriteyDocument.defaultBodyAttributes()
             )
-            self.documentID = UUID().uuidString
             return
         }
 
-        var documentAttributes: NSDictionary?
         let attr = try NSAttributedString(
             data: data,
             options: [.documentType: NSAttributedString.DocumentType.rtf],
-            documentAttributes: &documentAttributes
+            documentAttributes: nil
         )
         self.attributedText = attr
-
-        // Recover (or mint) a stable document ID stored in RTF metadata.
-        if let custom = documentAttributes?["WriteyDocumentID"] as? String, !custom.isEmpty {
-            self.documentID = custom
-        } else {
-            self.documentID = UUID().uuidString
-        }
     }
 
     func snapshot(contentType: UTType) throws -> Data {
         let range = NSRange(location: 0, length: attributedText.length)
         let attrs: [NSAttributedString.DocumentAttributeKey: Any] = [
-            .documentType: NSAttributedString.DocumentType.rtf,
-            // Custom attributes are written into the RTF \*\info group and
-            // round-tripped on read.
-            NSAttributedString.DocumentAttributeKey(rawValue: "WriteyDocumentID"): documentID
+            .documentType: NSAttributedString.DocumentType.rtf
         ]
         return try attributedText.data(from: range, documentAttributes: attrs)
     }

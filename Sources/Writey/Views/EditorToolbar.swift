@@ -54,7 +54,7 @@ struct EditorToolbar: View {
                 if sync.isBusy {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: sync.isLinked(fileURL: fileURL, documentID: document.documentID)
+                    Image(systemName: sync.isLinked(fileURL: fileURL)
                           ? "arrow.triangle.2.circlepath"
                           : "icloud.and.arrow.up")
                 }
@@ -67,14 +67,17 @@ struct EditorToolbar: View {
 
     private var syncLabel: String {
         if !auth.isSignedIn { return "Connect Google" }
-        if sync.isLinked(fileURL: fileURL, documentID: document.documentID) { return "Sync" }
+        if sync.isLinked(fileURL: fileURL) { return "Sync" }
         return "Link to Google Doc"
     }
 
     private var syncTooltip: String {
         if !auth.isSignedIn { return "Sign in to Google to enable sync" }
-        if sync.isLinked(fileURL: fileURL, documentID: document.documentID) {
+        if sync.isLinked(fileURL: fileURL) {
             return "Push and pull the latest with Google Docs"
+        }
+        if fileURL == nil {
+            return "Save this document (⌘S) before linking it to a Google Doc"
         }
         return "Create or attach a Google Doc for this file"
     }

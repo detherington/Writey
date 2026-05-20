@@ -11,21 +11,28 @@ final class SyncManager: ObservableObject {
 
     private let store = SyncLinkStore.shared
 
-    func isLinked(fileURL: URL?, documentID: String) -> Bool {
-        store.link(for: documentID) != nil
+    func isLinked(fileURL: URL?) -> Bool {
+        guard let fileURL else { return false }
+        return store.link(for: fileURL) != nil
     }
 
-    func currentLink(documentID: String) -> SyncLink? {
-        store.link(for: documentID)
+    func currentLink(fileURL: URL?) -> SyncLink? {
+        guard let fileURL else { return nil }
+        return store.link(for: fileURL)
     }
 
     // MARK: - Create-and-link
 
     func createAndLink(
         document: WriteyDocument,
+        fileURL: URL?,
         auth: GoogleAuth,
         suggestedName: String
     ) async {
+        guard let fileURL else {
+            statusLine = "Save this document to disk first (⌘S), then link it."
+            return
+        }
         do {
             isBusy = true
             statusLine = "Creating Google Doc…"
@@ -37,7 +44,7 @@ final class SyncManager: ObservableObject {
             let meta = try await drive.createDoc(name: suggestedName, html: html)
 
             let link = SyncLink(
-                documentID: document.documentID,
+                localPath: SyncLinkStore.key(for: fileURL),
                 googleFileID: meta.id,
                 lastSyncedModifiedTime: meta.modifiedTime,
                 lastSyncedAt: Date(),
@@ -55,10 +62,15 @@ final class SyncManager: ObservableObject {
     /// docs.google.com URL).
     func attachExisting(
         document: WriteyDocument,
+        fileURL: URL?,
         auth: GoogleAuth,
         fileID: String,
         pullAfterAttach: Bool
     ) async {
+        guard let fileURL else {
+            statusLine = "Save this document to disk first (⌘S), then link it."
+            return
+        }
         do {
             isBusy = true
             statusLine = "Linking…"
@@ -68,7 +80,7 @@ final class SyncManager: ObservableObject {
             let drive = DriveAPI(accessToken: token)
             let meta = try await drive.metadata(fileID: fileID)
             var link = SyncLink(
-                documentID: document.documentID,
+                localPath: SyncLinkStore.key(for: fileURL),
                 googleFileID: meta.id,
                 lastSyncedModifiedTime: meta.modifiedTime,
                 lastSyncedAt: Date(),
@@ -94,8 +106,8 @@ final class SyncManager: ObservableObject {
 
     // MARK: - Push / pull
 
-    func sync(document: WriteyDocument, auth: GoogleAuth) async {
-        guard let link = store.link(for: document.documentID) else {
+    func sync(document: WriteyDocument, fileURL: URL?, auth: GoogleAuth) async {
+        guard let fileURL, let link = store.link(for: fileURL) else {
             statusLine = "Not linked yet — create or attach a Google Doc first."
             return
         }
@@ -161,8 +173,9 @@ final class SyncManager: ObservableObject {
         store.upsert(updated)
     }
 
-    func unlink(document: WriteyDocument) {
-        store.remove(documentID: document.documentID)
+    func unlink(fileURL: URL?) {
+        guard let fileURL else { return }
+        store.remove(fileURL: fileURL)
         statusLine = "Unlinked from Google Doc"
     }
 
