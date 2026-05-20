@@ -16,10 +16,16 @@ struct SyncLink: Codable {
     /// belongs to. Primary key.
     var localPath: String
     var googleFileID: String
-    /// The remote doc's `modifiedTime` (RFC 3339 string) at the moment of
-    /// our last sync. Drive API v3 does *not* populate `headRevisionId`
-    /// for Google Docs/Sheets/Slides — only for arbitrary binary files.
-    var lastSyncedModifiedTime: String?
+    /// SHA-256 of the *exported HTML* of the remote Google Doc at the
+    /// moment of our last sync.
+    ///
+    /// We previously tried two cheaper signals to detect remote changes —
+    /// `headRevisionId` (not populated by Drive API for Docs/Sheets/Slides)
+    /// and `modifiedTime` (which, in practice, didn't reliably tick on
+    /// browser edits within the test window). Hashing the exported HTML
+    /// is the only mechanism that *actually* reflects whether the
+    /// content has changed, at the cost of one extra API call per sync.
+    var lastSyncedRemoteContentHash: String?
     var lastSyncedAt: Date?
     var localFingerprint: String?  // hash of the local RTF at last sync
 }
