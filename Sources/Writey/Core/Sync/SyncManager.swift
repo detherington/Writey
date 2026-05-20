@@ -1,7 +1,12 @@
 import Foundation
-import AppKit
 import CryptoKit
 import Combine
+
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 final class SyncManager: ObservableObject {
@@ -10,6 +15,11 @@ final class SyncManager: ObservableObject {
     @Published var lastError: String?
 
     private let store = SyncLinkStore.shared
+
+    /// Platform-provided UI for the "both sides changed" conflict prompt.
+    /// Mac uses `NSAlert`, iOS will use `UIAlertController`. Wired up by
+    /// the platform layer at app startup.
+    var conflictResolver: (any SyncConflictResolver)?
 
     func isLinked(fileURL: URL?) -> Bool {
         guard let fileURL else { return false }
@@ -139,7 +149,7 @@ final class SyncManager: ObservableObject {
                 applyRemote(html: remoteHTML, hash: remoteHash, document: document, link: link)
                 statusLine = "Pulled from Google · \(Self.timeString())"
             case (true, true):
-                let choice = ConflictPrompt.ask()
+                let choice = conflictResolver?.resolveSyncConflict() ?? .cancel
                 switch choice {
                 case .keepLocal:
                     try await push(drive: drive, document: document, link: link)
@@ -223,22 +233,6 @@ final class SyncManager: ObservableObject {
     }
 }
 
-// MARK: - Conflict prompt
-
-enum ConflictPrompt {
-    enum Choice { case keepLocal, keepRemote, cancel }
-    static func ask() -> Choice {
-        let alert = NSAlert()
-        alert.messageText = "Both versions have changed"
-        alert.informativeText = "The local document and the Google Doc have both been edited since your last sync. Which copy should win?"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Keep Local (push)")
-        alert.addButton(withTitle: "Keep Google (pull)")
-        alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:  return .keepLocal
-        case .alertSecondButtonReturn: return .keepRemote
-        default:                       return .cancel
-        }
-    }
-}
+// (ConflictPrompt UI lives in the platform layer — see
+// macOS/MacConflictResolver.swift, and iOS/IOSConflictResolver.swift
+// once the iPad target lands.)

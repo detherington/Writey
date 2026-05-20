@@ -7,7 +7,11 @@ struct ContentView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
     @StateObject private var editor = EditorController()
-    @StateObject private var sync = SyncManager()
+    @StateObject private var sync: SyncManager = {
+        let manager = SyncManager()
+        manager.conflictResolver = MacConflictResolver()
+        return manager
+    }()
     @State private var showingSyncSheet = false
     @State private var isDistractionFree = false
     @State private var hostWindow: NSWindow?

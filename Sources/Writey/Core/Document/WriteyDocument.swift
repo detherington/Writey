@@ -1,6 +1,11 @@
 import SwiftUI
 import UniformTypeIdentifiers
+
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// The document model.
 ///
@@ -82,7 +87,7 @@ final class WriteyDocument: ReferenceFileDocument {
         let para = NSMutableParagraphStyle()
         para.lineHeightMultiple = 1.4
         return [
-            .font: NSFont.systemFont(ofSize: 16, weight: .regular),
+            .font: PlatformFont.systemFont(ofSize: 16, weight: .regular),
             .paragraphStyle: para
         ]
     }

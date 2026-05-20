@@ -1,5 +1,10 @@
 import Foundation
+
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// Converts NSAttributedString <-> HTML for Google Docs round-tripping.
 ///

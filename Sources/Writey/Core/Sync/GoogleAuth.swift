@@ -1,8 +1,13 @@
 import Foundation
-import AppKit
 import AuthenticationServices
 import CryptoKit
 import Combine
+
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// Google OAuth 2.0 + PKCE for installed apps, with refresh-token
 /// persistence in the Keychain. Uses ASWebAuthenticationSession so the
@@ -225,12 +230,20 @@ final class GoogleAuth: NSObject, ObservableObject {
 extension GoogleAuth: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         // ASWebAuthenticationSession calls this on the main thread per
-        // Apple's docs. We were previously doing `DispatchQueue.main.sync`
-        // here, which deadlocks libdispatch since we're already on the
-        // main queue — `assumeIsolated` is the modern equivalent that
-        // hops into the main actor's isolation domain without dispatching.
+        // Apple's docs. `assumeIsolated` is the modern way to access
+        // main-actor state from a nonisolated protocol method without
+        // hitting the libdispatch self-deadlock that `DispatchQueue.main.sync`
+        // would.
         MainActor.assumeIsolated {
-            NSApp.keyWindow ?? NSApp.windows.first ?? NSWindow()
+            #if canImport(AppKit)
+            return NSApp.keyWindow ?? NSApp.windows.first ?? NSWindow()
+            #elseif canImport(UIKit)
+            return UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow)
+                ?? UIWindow()
+            #endif
         }
     }
 }

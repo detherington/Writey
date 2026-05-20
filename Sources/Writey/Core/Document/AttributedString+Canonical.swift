@@ -1,4 +1,10 @@
+import Foundation
+
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 extension NSAttributedString {
     /// Returns a copy of the receiver with theme-only attributes (foreground

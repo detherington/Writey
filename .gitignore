@@ -24,7 +24,7 @@ Package.resolved
 
 # Secrets — your real OAuth client ID lives here. Never commit.
 # (The committed SyncConfig.template.swift documents the shape.)
-Sources/Writey/Sync/SyncConfig.swift
+Sources/Writey/Core/Sync/SyncConfig.swift
 
 # Local DMG builds
 Writey-*.dmg
