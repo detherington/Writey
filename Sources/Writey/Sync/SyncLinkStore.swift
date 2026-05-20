@@ -9,7 +9,12 @@ import Foundation
 struct SyncLink: Codable {
     var documentID: String
     var googleFileID: String
-    var lastSyncedRevisionID: String?
+    /// The remote doc's `modifiedTime` (RFC 3339 string, e.g.
+    /// "2026-05-20T15:32:17.123Z") at the moment of our last sync.
+    /// We *used to* use `headRevisionId` here, but Drive API v3 does not
+    /// populate that field for Google Docs/Sheets/Slides — only for
+    /// arbitrary binary files. `modifiedTime` works for both.
+    var lastSyncedModifiedTime: String?
     var lastSyncedAt: Date?
     var localFingerprint: String?  // hash of the local RTF at last sync
 }

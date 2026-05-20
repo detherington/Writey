@@ -39,7 +39,7 @@ final class SyncManager: ObservableObject {
             let link = SyncLink(
                 documentID: document.documentID,
                 googleFileID: meta.id,
-                lastSyncedRevisionID: meta.headRevisionId,
+                lastSyncedModifiedTime: meta.modifiedTime,
                 lastSyncedAt: Date(),
                 localFingerprint: fingerprint(of: document.attributedText)
             )
@@ -70,7 +70,7 @@ final class SyncManager: ObservableObject {
             var link = SyncLink(
                 documentID: document.documentID,
                 googleFileID: meta.id,
-                lastSyncedRevisionID: meta.headRevisionId,
+                lastSyncedModifiedTime: meta.modifiedTime,
                 lastSyncedAt: Date(),
                 localFingerprint: fingerprint(of: document.attributedText)
             )
@@ -108,7 +108,7 @@ final class SyncManager: ObservableObject {
             let drive = DriveAPI(accessToken: token)
             let remote = try await drive.metadata(fileID: link.googleFileID)
 
-            let remoteChanged = remote.headRevisionId != link.lastSyncedRevisionID
+            let remoteChanged = remote.modifiedTime != link.lastSyncedModifiedTime
             let localChanged = fingerprint(of: document.attributedText) != link.localFingerprint
 
             switch (localChanged, remoteChanged) {
@@ -143,7 +143,7 @@ final class SyncManager: ObservableObject {
         let html = HTMLConverter.html(from: document.attributedText)
         let meta = try await drive.updateDocHTML(fileID: link.googleFileID, html: html)
         var updated = link
-        updated.lastSyncedRevisionID = meta.headRevisionId
+        updated.lastSyncedModifiedTime = meta.modifiedTime
         updated.lastSyncedAt = Date()
         updated.localFingerprint = fingerprint(of: document.attributedText)
         store.upsert(updated)
@@ -155,7 +155,7 @@ final class SyncManager: ObservableObject {
         document.attributedText = attr
         let meta = try await drive.metadata(fileID: link.googleFileID)
         var updated = link
-        updated.lastSyncedRevisionID = meta.headRevisionId
+        updated.lastSyncedModifiedTime = meta.modifiedTime
         updated.lastSyncedAt = Date()
         updated.localFingerprint = fingerprint(of: document.attributedText)
         store.upsert(updated)
