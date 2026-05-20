@@ -34,3 +34,16 @@ struct ThemeCommands: Commands {
         }
     }
 }
+
+/// View menu — distraction-free mode toggle. Mirrors the Mac's ⇧⌘D
+/// shortcut so the muscle memory transfers between platforms.
+struct ViewCommands: Commands {
+    var body: some Commands {
+        CommandMenu("View") {
+            Button("Distraction-Free Mode") {
+                NotificationCenter.default.post(name: .writeyToggleDistractionFree, object: nil)
+            }
+            .keyboardShortcut("d", modifiers: [.shift, .command])
+        }
+    }
+}

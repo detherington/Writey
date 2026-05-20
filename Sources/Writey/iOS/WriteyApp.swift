@@ -14,6 +14,7 @@ struct WriteyApp: App {
         }
         .commands {
             ThemeCommands(theme: theme)
+            ViewCommands()
         }
         // No `Settings` scene on iOS — settings are reached via an in-app
         // sheet from the toolbar.

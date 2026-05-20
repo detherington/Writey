@@ -78,7 +78,5 @@ struct ViewCommands: Commands {
     }
 }
 
-extension Notification.Name {
-    static let writeyShowSyncSheet         = Notification.Name("writey.showSyncSheet")
-    static let writeyToggleDistractionFree = Notification.Name("writey.toggleDistractionFree")
-}
+// Notification.Name extensions live in Core/NotificationNames.swift so
+// both targets share the constants.
