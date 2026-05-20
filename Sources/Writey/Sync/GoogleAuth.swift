@@ -224,7 +224,12 @@ final class GoogleAuth: NSObject, ObservableObject {
 
 extension GoogleAuth: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        DispatchQueue.main.sync {
+        // ASWebAuthenticationSession calls this on the main thread per
+        // Apple's docs. We were previously doing `DispatchQueue.main.sync`
+        // here, which deadlocks libdispatch since we're already on the
+        // main queue — `assumeIsolated` is the modern equivalent that
+        // hops into the main actor's isolation domain without dispatching.
+        MainActor.assumeIsolated {
             NSApp.keyWindow ?? NSApp.windows.first ?? NSWindow()
         }
     }
