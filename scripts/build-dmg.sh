@@ -17,13 +17,13 @@
 #   2. Store it in your Keychain so this script can use it without
 #      ever seeing the plaintext password:
 #
-#      xcrun notarytool store-credentials "WriteyNotary" \
+#      xcrun notarytool store-credentials "Picsy" \
 #          --apple-id darrell@theangle.com \
 #          --team-id 8B29CDK832 \
 #          --password '<paste-app-specific-password-here>'
 #
 #      That writes a Keychain item; the script references it by the
-#      profile name "WriteyNotary" forever after.
+#      profile name "Picsy" forever after.
 #
 # USAGE:
 #   ./scripts/build-dmg.sh              # builds Writey-<version-from-project.yml>.dmg
@@ -46,7 +46,7 @@ if [ ! -f "Sources/Writey/Core/Sync/SyncConfig.swift" ]; then
 fi
 
 IDENTITY="Developer ID Application: Darrell Etherington (8B29CDK832)"
-NOTARY_PROFILE="WriteyNotary"
+NOTARY_PROFILE="Picsy"
 
 if ! security find-identity -v -p codesigning | grep -q "$IDENTITY"; then
   echo "❌ Couldn't find '$IDENTITY' in your Keychain."
@@ -93,9 +93,26 @@ if [ -z "$APP_PATH" ]; then
 fi
 echo "▸ Built: $APP_PATH"
 
+# Re-sign the .app with our entitlements file explicitly. xcodebuild's
+# `build` action (vs `archive`) leaves `com.apple.security.get-task-allow`
+# = true even in Release config, which Apple's notary service rejects.
+# Our entitlements file doesn't include that key, so this overrides
+# Xcode's auto-injected signature with the right one.
+ENTITLEMENTS_FILE="Sources/Writey/macOS/Writey.entitlements"
+echo "▸ Re-signing .app with explicit Release entitlements (strips get-task-allow)"
+codesign --force --sign "$IDENTITY" \
+  --options=runtime \
+  --timestamp \
+  --entitlements "$ENTITLEMENTS_FILE" \
+  "$APP_PATH"
+
 echo "▸ Verifying .app signature"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH" 2>&1 | tail -5
 codesign -dv --verbose=2 "$APP_PATH" 2>&1 | grep -E "(Authority|TeamIdentifier|flags)" | head -5
+echo "▸ Confirming get-task-allow is absent"
+codesign -d --entitlements - "$APP_PATH" 2>&1 | grep -q "get-task-allow" \
+  && { echo "❌ get-task-allow still present, notarization will fail"; exit 1; } \
+  || echo "  ✓ get-task-allow not present"
 
 # ────────────────────────────────────────────────────────────────────────
 # Package as DMG
