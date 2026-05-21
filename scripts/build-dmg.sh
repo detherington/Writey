@@ -1,22 +1,63 @@
 #!/bin/bash
 #
-# Build a release .app and wrap it in a DMG that you can copy to your other
-# Macs. No code signing, no notarization, no Sparkle. The first time the
-# DMG is opened on a different Mac, Gatekeeper will warn that the app is
-# from an unidentified developer — right-click → Open once to bypass.
+# Build a release .app, sign it with your Developer ID Application cert,
+# wrap it in a DMG, sign that, notarize via Apple's notary service, and
+# staple the notarization ticket so the DMG is trusted offline.
 #
-# Usage:
-#   ./scripts/build-dmg.sh           # builds Writey-0.1.0.dmg (from project.yml MARKETING_VERSION)
-#   ./scripts/build-dmg.sh 0.2.0     # overrides the version
+# The result: a DMG you can drop onto any Mac (yours, friends', whatever)
+# and double-click to install with zero Gatekeeper warnings.
+#
+# ONE-TIME SETUP (do once, ever, on this machine):
+#
+#   1. Go to https://account.apple.com/account/manage
+#        → Sign-In and Security → App-Specific Passwords
+#        → Generate password (label it "Writey Notary")
+#      Save it — Apple won't show it to you again.
+#
+#   2. Store it in your Keychain so this script can use it without
+#      ever seeing the plaintext password:
+#
+#      xcrun notarytool store-credentials "WriteyNotary" \
+#          --apple-id darrell@theangle.com \
+#          --team-id 8B29CDK832 \
+#          --password '<paste-app-specific-password-here>'
+#
+#      That writes a Keychain item; the script references it by the
+#      profile name "WriteyNotary" forever after.
+#
+# USAGE:
+#   ./scripts/build-dmg.sh              # builds Writey-<version-from-project.yml>.dmg
+#   ./scripts/build-dmg.sh 0.2.0        # overrides the version
 #
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if [ ! -f "Sources/Writey/Sync/SyncConfig.swift" ]; then
-  echo "❌ Sources/Writey/Sync/SyncConfig.swift is missing."
-  echo "   Run:  cp Sources/Writey/Sync/SyncConfig.template.swift Sources/Writey/Sync/SyncConfig.swift"
+# ────────────────────────────────────────────────────────────────────────
+# Preflight
+# ────────────────────────────────────────────────────────────────────────
+
+if [ ! -f "Sources/Writey/Core/Sync/SyncConfig.swift" ]; then
+  echo "❌ Sources/Writey/Core/Sync/SyncConfig.swift is missing."
+  echo "   Run:  cp Sources/Writey/Core/Sync/SyncConfig.template.swift \\"
+  echo "         Sources/Writey/Core/Sync/SyncConfig.swift"
   echo "   Then paste in your OAuth client ID + redirect scheme."
+  exit 1
+fi
+
+IDENTITY="Developer ID Application: Darrell Etherington (8B29CDK832)"
+NOTARY_PROFILE="WriteyNotary"
+
+if ! security find-identity -v -p codesigning | grep -q "$IDENTITY"; then
+  echo "❌ Couldn't find '$IDENTITY' in your Keychain."
+  echo "   The cert may have expired or been removed. Re-download it from"
+  echo "   https://developer.apple.com/account/resources/certificates."
+  exit 1
+fi
+
+if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+  echo "❌ Keychain profile '$NOTARY_PROFILE' isn't set up yet."
+  echo "   See the ONE-TIME SETUP comment at the top of this script."
   exit 1
 fi
 
@@ -24,17 +65,25 @@ VERSION="${1:-$(awk -F'"' '/MARKETING_VERSION:/ {print $2}' project.yml)}"
 DMG="Writey-${VERSION}.dmg"
 BUILD_DIR="build"
 
-echo "▸ xcodegen generate"
-xcodegen generate
+# ────────────────────────────────────────────────────────────────────────
+# Build
+# ────────────────────────────────────────────────────────────────────────
 
-echo "▸ xcodebuild (Release, no signing)"
+echo "▸ xcodegen generate"
+xcodegen generate >/dev/null
+
+echo "▸ xcodebuild (Release, Developer ID signed, hardened runtime)"
 xcodebuild \
   -project Writey.xcodeproj \
   -scheme Writey \
   -configuration Release \
   -destination 'platform=macOS' \
   -derivedDataPath "$BUILD_DIR" \
-  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_IDENTITY="$IDENTITY" \
+  DEVELOPMENT_TEAM=8B29CDK832 \
+  PROVISIONING_PROFILE_SPECIFIER="" \
+  OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" \
   build \
   | tail -20
 
@@ -44,25 +93,52 @@ if [ -z "$APP_PATH" ]; then
 fi
 echo "▸ Built: $APP_PATH"
 
+echo "▸ Verifying .app signature"
+codesign --verify --deep --strict --verbose=2 "$APP_PATH" 2>&1 | tail -5
+codesign -dv --verbose=2 "$APP_PATH" 2>&1 | grep -E "(Authority|TeamIdentifier|flags)" | head -5
+
+# ────────────────────────────────────────────────────────────────────────
+# Package as DMG
+# ────────────────────────────────────────────────────────────────────────
+
 STAGING=$(mktemp -d)
 cp -R "$APP_PATH" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
-
 rm -f "$DMG"
-echo "▸ hdiutil create → $DMG"
+echo "▸ Creating DMG"
 hdiutil create \
   -srcfolder "$STAGING" \
   -volname "Writey" \
   -fs APFS \
   -format UDZO \
-  -ov \
-  "$DMG" \
+  -ov "$DMG" \
   > /dev/null
-
 rm -rf "$STAGING"
+
+echo "▸ Signing DMG (Developer ID + timestamp + hardened runtime)"
+codesign --sign "$IDENTITY" --timestamp --options=runtime "$DMG"
+
+# ────────────────────────────────────────────────────────────────────────
+# Notarize
+# ────────────────────────────────────────────────────────────────────────
+
+echo "▸ Submitting DMG to Apple's notary service…"
+echo "   (takes 1–5 min usually; Apple scans for malware and signs a ticket)"
+xcrun notarytool submit "$DMG" \
+  --keychain-profile "$NOTARY_PROFILE" \
+  --wait
+
+echo "▸ Stapling notarization ticket to DMG"
+xcrun stapler staple "$DMG"
+
+# ────────────────────────────────────────────────────────────────────────
+# Verify
+# ────────────────────────────────────────────────────────────────────────
+
+echo "▸ Gatekeeper assessment (should say 'accepted')"
+spctl -a -t open --context context:primary-signature -v "$DMG" 2>&1 | head -3
 
 SIZE=$(du -h "$DMG" | cut -f1)
 echo ""
-echo "✅ $DMG ($SIZE)"
-echo "   Copy this file to your other Macs (AirDrop / iCloud Drive / scp)."
-echo "   First time: right-click the app in Finder → Open to bypass Gatekeeper."
+echo "✅ $DMG ($SIZE) — signed, notarized, stapled."
+echo "   Copy this file to any Mac, double-click — opens with no warnings."
