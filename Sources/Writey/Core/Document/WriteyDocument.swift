@@ -26,8 +26,15 @@ import UIKit
 final class WriteyDocument: ReferenceFileDocument {
     typealias Snapshot = Data
 
+    /// Includes Markdown explicitly so `.md` files show as openable in the
+    /// iOS DocumentGroup file browser (which filters on exact declared types,
+    /// not UTI conformance).
     static var readableContentTypes: [UTType] {
-        [.rtf, .plainText]
+        var types: [UTType] = [.rtf, .plainText]
+        if let markdown = UTType("net.daringfireball.markdown") {
+            types.append(markdown)
+        }
+        return types
     }
 
     static var writableContentTypes: [UTType] {
@@ -48,7 +55,11 @@ final class WriteyDocument: ReferenceFileDocument {
             throw CocoaError(.fileReadCorruptFile)
         }
 
-        if configuration.contentType == .plainText {
+        // Anything that conforms to plain text — .txt, .md, .swift, etc. —
+        // gets loaded as UTF-8. Conformance check instead of `== .plainText`
+        // so subtypes like markdown (net.daringfireball.markdown) route here
+        // instead of falling through to the RTF path and crashing.
+        if configuration.contentType.conforms(to: .plainText) {
             let text = String(data: data, encoding: .utf8) ?? ""
             self.attributedText = NSAttributedString(
                 string: text,
