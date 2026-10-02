@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @StateObject private var editor = EditorController()
     @StateObject private var sync: SyncManager = {
         let manager = SyncManager()
@@ -23,7 +24,14 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !isDistractionFree {
+            if isDistractionFree {
+                // A row of its own: floated over the editor, the button's
+                // taps went to the text view underneath.
+                HStack {
+                    Spacer()
+                    exitButton
+                }
+            } else {
                 EditorToolbar(
                     fileURL: fileURL,
                     showingSyncSheet: $showingSyncSheet,
@@ -50,6 +58,18 @@ struct ContentView: View {
             }
         }
         .background(EditorPalette.background(colorScheme))
+        .toolbar {
+            // At compact width the formatting bar has no room for these.
+            if sizeClass == .compact {
+                DocumentActions(
+                    fileURL: fileURL,
+                    sync: sync,
+                    showingSyncSheet: $showingSyncSheet,
+                    showingSettingsSheet: $showingSettingsSheet,
+                    isDistractionFree: $isDistractionFree
+                )
+            }
+        }
         .environmentObject(editor)
         .environmentObject(sync)
         .focusedSceneObject(editor)
@@ -57,13 +77,10 @@ struct ContentView: View {
         .focusedSceneValue(\.distractionFree, $isDistractionFree)
         // Distraction-free hides the nav bar DocumentGroup wraps us in, the
         // status bar and the home indicator.
-        .toolbar(isDistractionFree ? .hidden : .visible, for: .navigationBar)
+        .background(NavigationBarHider(isHidden: isDistractionFree))
         .statusBarHidden(isDistractionFree)
         .persistentSystemOverlays(isDistractionFree ? .hidden : .automatic)
         .animation(.easeInOut(duration: 0.2), value: isDistractionFree)
-        .overlay(alignment: .topTrailing) {
-            if isDistractionFree { exitButton }
-        }
         .sheet(isPresented: $showingSyncSheet) {
             GoogleSyncSheet(document: document, fileURL: fileURL)
                 .environmentObject(auth)
@@ -91,9 +108,25 @@ struct ContentView: View {
         }
         .opacity(0.35)
         .hoverEffect(.lift)
-        .padding(.top, 20)
-        .padding(.trailing, 20)
+        .padding(.top, 8)
+        .padding(.trailing, 16)
         .accessibilityLabel("Exit distraction-free mode")
         .keyboardShortcut(.escape, modifiers: [])
+    }
+}
+
+/// DocumentGroup's navigation bar ignores `.toolbar(.hidden, for:
+/// .navigationBar)`, so this hides it on the UINavigationController itself.
+private struct NavigationBarHider: UIViewControllerRepresentable {
+    let isHidden: Bool
+
+    func makeUIViewController(context: Context) -> UIViewController { UIViewController() }
+
+    func updateUIViewController(_ controller: UIViewController, context: Context) {
+        let isHidden = isHidden
+        // Not in the view-controller hierarchy yet on the first pass.
+        Task { @MainActor in
+            controller.navigationController?.setNavigationBarHidden(isHidden, animated: true)
+        }
     }
 }
