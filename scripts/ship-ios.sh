@@ -73,7 +73,7 @@ echo "▸ export .ipa (App Store distribution)"
 xcodebuild -exportArchive \
   -archivePath build/Writey-iOS.xcarchive \
   -exportPath build/Writey-iOS-export \
-  -exportOptionsPlist build/ExportOptions.plist \
+  -exportOptionsPlist scripts/ExportOptions.plist \
   -allowProvisioningUpdates \
   | tail -2
 

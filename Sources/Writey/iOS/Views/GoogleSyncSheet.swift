@@ -7,7 +7,6 @@ struct GoogleSyncSheet: View {
 
     @EnvironmentObject var auth: GoogleAuth
     @EnvironmentObject var sync: SyncManager
-    @EnvironmentObject var theme: ThemeManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var attachURLString: String = ""
@@ -40,6 +39,11 @@ struct GoogleSyncSheet: View {
                             Text("Configure your OAuth client ID in SyncConfig.swift first.")
                                 .font(.caption)
                                 .foregroundColor(.orange)
+                        }
+                        if let error = auth.lastError {
+                            Label(error, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
                         }
                     }
                 } else if fileURL == nil {
@@ -96,7 +100,7 @@ struct GoogleSyncSheet: View {
             }
 
             Section("Attach an existing Google Doc") {
-                Text("Paste a Google Doc URL or file ID. We'll pull its contents.")
+                Text("Paste a Google Doc link or file ID. Its contents replace this document's text; your current text is saved first, in Writey's Sync Backups folder.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 TextField("docs.google.com/document/d/…", text: $attachURLString)
@@ -110,8 +114,7 @@ struct GoogleSyncSheet: View {
                             document: document,
                             fileURL: fileURL,
                             auth: auth,
-                            fileID: id,
-                            pullAfterAttach: true
+                            fileID: id
                         )
                     }
                 } label: {

@@ -6,7 +6,6 @@ struct GoogleSyncSheet: View {
 
     @EnvironmentObject var auth: GoogleAuth
     @EnvironmentObject var sync: SyncManager
-    @EnvironmentObject var theme: ThemeManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var attachURLString: String = ""
@@ -69,6 +68,11 @@ struct GoogleSyncSheet: View {
                     .font(.caption)
                     .foregroundColor(.orange)
             }
+            if let error = auth.lastError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 
@@ -108,7 +112,7 @@ struct GoogleSyncSheet: View {
 
             GroupBox("Attach an existing Google Doc") {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Paste a Google Doc URL or file ID. We'll pull its contents.")
+                    Text("Paste a Google Doc link or file ID. Its contents replace this document's text; your current text is saved first (File ▸ Revert To).")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("docs.google.com/document/d/…", text: $attachURLString)
@@ -121,8 +125,7 @@ struct GoogleSyncSheet: View {
                                 document: document,
                                 fileURL: fileURL,
                                 auth: auth,
-                                fileID: id,
-                                pullAfterAttach: true
+                                fileID: id
                             )
                         }
                     } label: {

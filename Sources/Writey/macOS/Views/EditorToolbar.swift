@@ -1,23 +1,21 @@
 import SwiftUI
 
 struct EditorToolbar: View {
-    @ObservedObject var document: WriteyDocument
     var fileURL: URL?
     @Binding var showingSyncSheet: Bool
 
-    @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var editor: EditorController
     @EnvironmentObject var sync: SyncManager
     @EnvironmentObject var auth: GoogleAuth
+    @Environment(\.colorScheme) private var colorScheme
 
+    // Keyboard shortcuts live on the Format menu, not here, so each is
+    // bound exactly once.
     var body: some View {
         HStack(spacing: 6) {
-            FormatToggle(systemImage: "bold", isOn: editor.isBold) { editor.toggleBold() }
-                .keyboardShortcut("b", modifiers: .command)
-            FormatToggle(systemImage: "italic", isOn: editor.isItalic) { editor.toggleItalic() }
-                .keyboardShortcut("i", modifiers: .command)
-            FormatToggle(systemImage: "underline", isOn: editor.isUnderline) { editor.toggleUnderline() }
-                .keyboardShortcut("u", modifiers: .command)
+            FormatToggle(systemImage: "bold", help: "Bold (⌘B)", isOn: editor.isBold) { editor.toggleBold() }
+            FormatToggle(systemImage: "italic", help: "Italic (⌘I)", isOn: editor.isItalic) { editor.toggleItalic() }
+            FormatToggle(systemImage: "underline", help: "Underline (⌘U)", isOn: editor.isUnderline) { editor.toggleUnderline() }
 
             Divider().frame(height: 16).padding(.horizontal, 4)
 
@@ -33,8 +31,12 @@ struct EditorToolbar: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
 
-            FormatToggle(systemImage: "list.bullet", isOn: false) { editor.toggleBulletList() }
-            FormatToggle(systemImage: "list.number", isOn: false) { editor.toggleNumberedList() }
+            FormatToggle(systemImage: "list.bullet", help: "Bulleted List (⇧⌘8)", isOn: editor.isBulletList) {
+                editor.toggleBulletList()
+            }
+            FormatToggle(systemImage: "list.number", help: "Numbered List (⇧⌘7)", isOn: editor.isNumberedList) {
+                editor.toggleNumberedList()
+            }
 
             Spacer()
 
@@ -42,10 +44,9 @@ struct EditorToolbar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(theme.chromeBackground)
+        .background(EditorPalette.chromeBackground(colorScheme))
     }
 
-    @ViewBuilder
     private var syncButton: some View {
         Button {
             showingSyncSheet = true
@@ -73,18 +74,15 @@ struct EditorToolbar: View {
 
     private var syncTooltip: String {
         if !auth.isSignedIn { return "Sign in to Google to enable sync" }
-        if sync.isLinked(fileURL: fileURL) {
-            return "Push and pull the latest with Google Docs"
-        }
-        if fileURL == nil {
-            return "Save this document (⌘S) before linking it to a Google Doc"
-        }
+        if sync.isLinked(fileURL: fileURL) { return "Push and pull the latest with Google Docs (⇧⌘Y)" }
+        if fileURL == nil { return "Save this document (⌘S) before linking it to a Google Doc" }
         return "Create or attach a Google Doc for this file"
     }
 }
 
 private struct FormatToggle: View {
     let systemImage: String
+    let help: String
     let isOn: Bool
     let action: () -> Void
 
@@ -97,8 +95,9 @@ private struct FormatToggle: View {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(isOn ? Color.accentColor.opacity(0.20) : Color.clear)
                 )
-                .foregroundColor(isOn ? .accentColor : .primary)
+                .foregroundStyle(isOn ? Color.accentColor : Color.primary)
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 }

@@ -20,10 +20,12 @@ struct WriteyApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Writey") { NSApp.orderFrontStandardAboutPanel(nil) }
             }
-            ThemeCommands(theme: theme)
+            // Find (⌘F, wired to NSTextView's find bar), spelling, substitutions.
+            TextEditingCommands()
             FormatCommands()
-            ViewCommands()
             SyncCommands()
+            ViewCommands()
+            ThemeCommands(theme: theme)
         }
 
         Settings {

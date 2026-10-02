@@ -10,132 +10,108 @@ import UIKit
 
 @MainActor
 final class SyncManager: ObservableObject {
-    @Published var isBusy: Bool = false
-    @Published var statusLine: String?
-    @Published var lastError: String?
+    @Published private(set) var isBusy = false
+    @Published private(set) var statusLine: String?
 
     private let store = SyncLinkStore.shared
 
-    /// Platform-provided UI for the "both sides changed" conflict prompt.
-    /// Mac uses `NSAlert`, iOS will use `UIAlertController`. Wired up by
-    /// the platform layer at app startup.
+    /// Platform UI for the "both sides changed" prompt.
     var conflictResolver: (any SyncConflictResolver)?
 
+    /// The open editor. Pulls go through it so they're undoable and mark the
+    /// document as edited (which is what gets them autosaved).
+    weak var textEditor: (any DocumentTextEditing)?
+
     func isLinked(fileURL: URL?) -> Bool {
-        guard let fileURL else { return false }
-        return store.link(for: fileURL) != nil
+        currentLink(fileURL: fileURL) != nil
     }
 
     func currentLink(fileURL: URL?) -> SyncLink? {
-        guard let fileURL else { return nil }
-        return store.link(for: fileURL)
+        fileURL.flatMap { store.link(for: $0) }
     }
 
-    // MARK: - Create-and-link
+    // MARK: - Link
 
-    func createAndLink(
-        document: WriteyDocument,
-        fileURL: URL?,
-        auth: GoogleAuth,
-        suggestedName: String
-    ) async {
+    func createAndLink(document: WriteyDocument, fileURL: URL?, auth: GoogleAuth, suggestedName: String) async {
+        guard !isBusy else { return }
         guard let fileURL else {
-            statusLine = "Save this document to disk first (⌘S), then link it."
+            statusLine = "Save this document first, then link it."
             return
         }
+        isBusy = true
+        defer { isBusy = false }
+        statusLine = "Creating Google Doc…"
+
         do {
-            isBusy = true
-            statusLine = "Creating Google Doc…"
-            defer { isBusy = false }
-
-            let token = try await auth.validAccessToken()
-            let html = HTMLConverter.html(from: document.attributedText)
-            let drive = DriveAPI(accessToken: token)
-            let meta = try await drive.createDoc(name: suggestedName, html: html)
-            // Fetch back the canonical (Google-normalized) HTML to record the
-            // baseline hash. We can't hash what we sent because Google
-            // reformats HTML during the conversion to its Doc format, and
-            // the next sync would otherwise falsely detect "remote changed".
+            let drive = driveClient(auth)
+            let meta = try await drive.createDoc(name: suggestedName, html: HTMLConverter.html(from: document.attributedText))
+            // Hash Google's normalized export, not what we sent: Google
+            // rewrites HTML on import, so our own HTML would never match.
             let canonicalRemote = try await drive.exportAsHTML(fileID: meta.id)
-
-            let link = SyncLink(
+            store.upsert(SyncLink(
                 localPath: SyncLinkStore.key(for: fileURL),
                 googleFileID: meta.id,
                 lastSyncedRemoteContentHash: Self.contentHash(canonicalRemote),
                 lastSyncedAt: Date(),
                 localFingerprint: fingerprint(of: document.attributedText)
-            )
-            store.upsert(link)
-            statusLine = "Linked to Google Doc · last synced just now"
+            ))
+            statusLine = "Linked to a new Google Doc · \(Self.timeString())"
         } catch {
-            lastError = error.localizedDescription
-            statusLine = "Sync failed: \(error.localizedDescription)"
+            report(error, prefix: "Couldn't create the Google Doc")
         }
     }
 
-    /// Attach an existing Google Doc by its file ID (e.g. extracted from a
-    /// docs.google.com URL).
-    func attachExisting(
-        document: WriteyDocument,
-        fileURL: URL?,
-        auth: GoogleAuth,
-        fileID: String,
-        pullAfterAttach: Bool
-    ) async {
+    /// Attach an existing Google Doc by file ID and pull its contents.
+    func attachExisting(document: WriteyDocument, fileURL: URL?, auth: GoogleAuth, fileID: String) async {
+        guard !isBusy else { return }
         guard let fileURL else {
-            statusLine = "Save this document to disk first (⌘S), then link it."
+            statusLine = "Save this document first, then link it."
             return
         }
+        isBusy = true
+        defer { isBusy = false }
+        statusLine = "Linking…"
+
         do {
-            isBusy = true
-            statusLine = "Linking…"
-            defer { isBusy = false }
-
-            let token = try await auth.validAccessToken()
-            let drive = DriveAPI(accessToken: token)
-            let html = try await drive.exportAsHTML(fileID: fileID)
-
-            if pullAfterAttach, let attr = HTMLConverter.attributedString(from: html) {
-                document.attributedText = attr
-            }
-
-            let link = SyncLink(
+            let html = try await driveClient(auth).exportAsHTML(fileID: fileID)
+            let backupNote = try replaceLocalText(of: document, fileURL: fileURL, withRemoteHTML: html)
+            store.upsert(SyncLink(
                 localPath: SyncLinkStore.key(for: fileURL),
                 googleFileID: fileID,
                 lastSyncedRemoteContentHash: Self.contentHash(html),
                 lastSyncedAt: Date(),
                 localFingerprint: fingerprint(of: document.attributedText)
-            )
-            store.upsert(link)
-            statusLine = "Linked to Google Doc"
+            ))
+            statusLine = "Linked and pulled from Google · \(Self.timeString())" + backupNote
         } catch {
-            lastError = error.localizedDescription
-            statusLine = "Link failed: \(error.localizedDescription)"
+            report(error, prefix: "Couldn't link that Google Doc")
         }
     }
 
-    // MARK: - Push / pull
+    func unlink(fileURL: URL?) {
+        guard let fileURL else { return }
+        store.remove(fileURL: fileURL)
+        statusLine = "Unlinked from Google Doc"
+    }
+
+    // MARK: - Sync
 
     func sync(document: WriteyDocument, fileURL: URL?, auth: GoogleAuth) async {
+        guard !isBusy else { return }
         guard let fileURL, let link = store.link(for: fileURL) else {
             statusLine = "Not linked yet — create or attach a Google Doc first."
             return
         }
+        isBusy = true
+        defer { isBusy = false }
+        statusLine = "Checking Google Docs…"
+
         do {
-            isBusy = true
-            statusLine = "Checking remote…"
-            defer { isBusy = false }
-
-            let token = try await auth.validAccessToken()
-            let drive = DriveAPI(accessToken: token)
-
-            // Single source of truth for whether the remote has changed:
-            // the SHA-256 of the exported HTML. We always fetch this so we
-            // can compare against our last baseline; if we end up pulling,
-            // we reuse the same body instead of fetching twice.
+            let drive = driveClient(auth)
+            // The hash of the exported HTML is the source of truth for "did
+            // the remote change". If we end up pulling, we reuse this body.
             let remoteHTML = try await drive.exportAsHTML(fileID: link.googleFileID)
             let remoteHash = Self.contentHash(remoteHTML)
-
             let remoteChanged = remoteHash != link.lastSyncedRemoteContentHash
             let localChanged = fingerprint(of: document.attributedText) != link.localFingerprint
 
@@ -146,33 +122,27 @@ final class SyncManager: ObservableObject {
                 try await push(drive: drive, document: document, link: link)
                 statusLine = "Pushed to Google · \(Self.timeString())"
             case (false, true):
-                applyRemote(html: remoteHTML, hash: remoteHash, document: document, link: link)
-                statusLine = "Pulled from Google · \(Self.timeString())"
+                let note = try pull(html: remoteHTML, hash: remoteHash, document: document, fileURL: fileURL, link: link)
+                statusLine = "Pulled from Google · \(Self.timeString())" + note
             case (true, true):
-                let choice = conflictResolver?.resolveSyncConflict() ?? .cancel
-                switch choice {
+                switch await conflictResolver?.resolveSyncConflict() ?? .cancel {
                 case .keepLocal:
                     try await push(drive: drive, document: document, link: link)
-                    statusLine = "Pushed local copy (overwrote remote) · \(Self.timeString())"
+                    statusLine = "Pushed your copy over Google's · \(Self.timeString())"
                 case .keepRemote:
-                    applyRemote(html: remoteHTML, hash: remoteHash, document: document, link: link)
-                    statusLine = "Pulled remote copy (overwrote local) · \(Self.timeString())"
+                    let note = try pull(html: remoteHTML, hash: remoteHash, document: document, fileURL: fileURL, link: link)
+                    statusLine = "Replaced your copy with Google's · \(Self.timeString())" + note
                 case .cancel:
-                    statusLine = "Sync cancelled — both sides have changes"
+                    statusLine = "Sync cancelled — both copies have changes"
                 }
             }
         } catch {
-            lastError = error.localizedDescription
-            statusLine = "Sync failed: \(error.localizedDescription)"
+            report(error, prefix: "Sync failed")
         }
     }
 
     private func push(drive: DriveAPI, document: WriteyDocument, link: SyncLink) async throws {
-        let html = HTMLConverter.html(from: document.attributedText)
-        _ = try await drive.updateDocHTML(fileID: link.googleFileID, html: html)
-        // Re-fetch the canonical post-normalization HTML to record the
-        // baseline hash, so the next sync doesn't see "remote changed" just
-        // because Google reformatted the HTML during its Doc conversion.
+        _ = try await drive.updateDocHTML(fileID: link.googleFileID, html: HTMLConverter.html(from: document.attributedText))
         let canonicalRemote = try await drive.exportAsHTML(fileID: link.googleFileID)
         var updated = link
         updated.lastSyncedRemoteContentHash = Self.contentHash(canonicalRemote)
@@ -181,42 +151,63 @@ final class SyncManager: ObservableObject {
         store.upsert(updated)
     }
 
-    /// Applies the freshly-fetched remote HTML to the document and records
-    /// it as the new sync baseline. Used by both the "remote-only changed"
-    /// path and the "user picked Keep Remote" conflict path.
-    private func applyRemote(
-        html: String,
-        hash: String,
-        document: WriteyDocument,
-        link: SyncLink
-    ) {
-        guard let attr = HTMLConverter.attributedString(from: html) else { return }
-        document.attributedText = attr
+    private func pull(html: String, hash: String, document: WriteyDocument, fileURL: URL, link: SyncLink) throws -> String {
+        let backupNote = try replaceLocalText(of: document, fileURL: fileURL, withRemoteHTML: html)
         var updated = link
         updated.lastSyncedRemoteContentHash = hash
         updated.lastSyncedAt = Date()
         updated.localFingerprint = fingerprint(of: document.attributedText)
         store.upsert(updated)
+        return backupNote
     }
 
-    func unlink(fileURL: URL?) {
-        guard let fileURL else { return }
-        store.remove(fileURL: fileURL)
-        statusLine = "Unlinked from Google Doc"
+    /// Backs up the local text if it differs from what's coming in, then
+    /// replaces it through the editor. Returns a status-line suffix saying
+    /// where the backup went.
+    private func replaceLocalText(of document: WriteyDocument, fileURL: URL, withRemoteHTML html: String) throws -> String {
+        guard let incoming = HTMLConverter.attributedString(from: html) else {
+            throw SyncError.unreadableRemote
+        }
+        var note = ""
+        if fingerprint(of: document.attributedText) != fingerprint(of: incoming),
+           let location = SyncBackup.save(document.attributedText, for: fileURL) {
+            note = " · previous text saved (\(location))"
+        }
+        if let textEditor {
+            textEditor.replaceAllText(with: incoming, actionName: "Pull from Google Docs")
+        } else {
+            document.attributedText = incoming
+        }
+        return note
     }
 
     // MARK: - Helpers
 
+    private func driveClient(_ auth: GoogleAuth) -> DriveAPI {
+        DriveAPI { forceRefresh in
+            try await auth.validAccessToken(forceRefresh: forceRefresh)
+        }
+    }
+
+    private func report(_ error: Error, prefix: String) {
+        if let authError = error as? GoogleAuth.AuthError, case .reauthRequired = authError {
+            statusLine = "Google sign-in expired. Sign in again from Settings to keep syncing."
+        } else {
+            statusLine = "\(prefix): \(error.localizedDescription)"
+        }
+    }
+
+    enum SyncError: LocalizedError {
+        case unreadableRemote
+        var errorDescription: String? { "Writey couldn't read the Google Doc's contents." }
+    }
+
+    /// Hash of the canonical (theme-color-free) RTF, so switching light/dark
+    /// doesn't look like a local edit.
     private func fingerprint(of attr: NSAttributedString) -> String {
-        // Fingerprint the canonical form (no theme colors). Otherwise the
-        // fingerprint would change every time the user toggles light/dark
-        // mode, since switching themes re-bakes a different .foregroundColor
-        // attribute across the whole storage — and the sync layer would
-        // think the user had typed something.
         let canonical = attr.writeyCanonicalForm()
-        let range = NSRange(location: 0, length: canonical.length)
         let data = (try? canonical.data(
-            from: range,
+            from: NSRange(location: 0, length: canonical.length),
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
         )) ?? Data()
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -227,12 +218,6 @@ final class SyncManager: ObservableObject {
     }
 
     private static func timeString() -> String {
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return df.string(from: Date())
+        Date().formatted(date: .omitted, time: .shortened)
     }
 }
-
-// (ConflictPrompt UI lives in the platform layer — see
-// macOS/MacConflictResolver.swift, and iOS/IOSConflictResolver.swift
-// once the iPad target lands.)

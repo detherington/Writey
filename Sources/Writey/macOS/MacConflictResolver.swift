@@ -1,19 +1,29 @@
 import AppKit
 
-/// macOS implementation of `SyncConflictResolver` — pops a synchronous
-/// NSAlert. The iOS target will ship its own UIAlertController-based
-/// implementation alongside its app delegate.
+/// Asks "which copy wins?" as a sheet on the frontmost window.
 final class MacConflictResolver: SyncConflictResolver {
     @MainActor
-    func resolveSyncConflict() -> SyncConflictChoice {
+    func resolveSyncConflict() async -> SyncConflictChoice {
         let alert = NSAlert()
         alert.messageText = "Both versions have changed"
-        alert.informativeText = "The local document and the Google Doc have both been edited since your last sync. Which copy should win?"
+        alert.informativeText = "This document and its Google Doc have both been edited since your last sync. Which copy should win? Writey saves your copy before replacing it, and Google Docs keeps its own version history."
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Keep Local (push)")
-        alert.addButton(withTitle: "Keep Google (pull)")
+        alert.addButton(withTitle: "Keep Mine (push)")
+        alert.addButton(withTitle: "Keep Google's (pull)")
         alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
+
+        guard let window = NSApp.keyWindow else {
+            return Self.choice(for: alert.runModal())
+        }
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) { response in
+                continuation.resume(returning: Self.choice(for: response))
+            }
+        }
+    }
+
+    private static func choice(for response: NSApplication.ModalResponse) -> SyncConflictChoice {
+        switch response {
         case .alertFirstButtonReturn:  return .keepLocal
         case .alertSecondButtonReturn: return .keepRemote
         default:                       return .cancel

@@ -2,8 +2,8 @@ name: Writey
 options:
   bundleIdPrefix: com.writey
   deploymentTarget:
-    macOS: "14.0"
-    iOS: "17.0"
+    macOS: "26.0"
+    iOS: "26.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 settings:
@@ -24,6 +24,7 @@ targets:
       - path: Sources/Writey/Core
         excludes:
           - "**/*.template.swift"
+      - path: Sources/Writey/Shared
       - path: Sources/Writey/macOS
     settings:
       base:
@@ -75,6 +76,7 @@ targets:
       - path: Sources/Writey/Core
         excludes:
           - "**/*.template.swift"
+      - path: Sources/Writey/Shared
       - path: Sources/Writey/iOS
     settings:
       base:
@@ -102,6 +104,12 @@ targets:
         # encryption regs, so saying so here saves you clicking through
         # the encryption-compliance dialog on every TestFlight upload.
         ITSAppUsesNonExemptEncryption: false
+        # New documents land in Writey's own Documents folder; without file
+        # sharing the File Provider can't see that folder, so creating a
+        # document fails with "Unable to Import Document" (DocumentManager
+        # error 1). This also lists it in Files as On My iPad ▸ Writey,
+        # alongside the Sync Backups folder.
+        UIFileSharingEnabled: true
         CFBundleDocumentTypes:
           - CFBundleTypeName: Rich Text Document
             CFBundleTypeRole: Editor

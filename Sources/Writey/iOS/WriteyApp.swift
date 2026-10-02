@@ -13,10 +13,12 @@ struct WriteyApp: App {
                 .preferredColorScheme(theme.preferredColorScheme)
         }
         .commands {
-            ThemeCommands(theme: theme)
+            TextEditingCommands()
+            FormatCommands()
+            SyncCommands()
             ViewCommands()
+            ThemeCommands(theme: theme)
         }
-        // No `Settings` scene on iOS — settings are reached via an in-app
-        // sheet from the toolbar.
+        // No `Settings` scene on iOS; settings open as a sheet from the toolbar.
     }
 }

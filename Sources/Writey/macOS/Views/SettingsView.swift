@@ -58,6 +58,11 @@ struct SettingsView: View {
                     }
                 }
             }
+            if let error = auth.lastError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             Divider()
             Text("Writey stores only a refresh token (in Keychain) and a per-document link to a Google Doc file ID. No content is sent until you sync.")
                 .font(.caption)

@@ -10,25 +10,24 @@ public typealias PlatformFont = UIFont
 public typealias PlatformColor = UIColor
 #endif
 
-/// Mediates UI behaviors that are inherently platform-specific from the
-/// Core sync layer.
-///
-/// `SyncManager` lives in Core (so the iOS app can reuse it without a
-/// rewrite), but it occasionally needs to ask the user a question — "both
-/// sides changed, which do you want to keep?". The Core layer doesn't
-/// know how to put up an alert (AppKit's `NSAlert` vs UIKit's
-/// `UIAlertController`), so it delegates through this protocol. Each
-/// platform target provides its own implementation.
+/// Platform UI for the "both sides changed" sync prompt (NSAlert on Mac,
+/// UIAlertController on iOS), so `SyncManager` can stay in Core.
+@MainActor
 public protocol SyncConflictResolver: AnyObject {
-    /// Asks the user how to resolve a local-and-remote-both-changed sync.
-    /// Must be called from the main actor; implementations show their
-    /// platform's standard alert UI.
-    @MainActor
-    func resolveSyncConflict() -> SyncConflictChoice
+    func resolveSyncConflict() async -> SyncConflictChoice
 }
 
 public enum SyncConflictChoice {
     case keepLocal
     case keepRemote
     case cancel
+}
+
+/// Lets sync replace a document's text through the editor rather than by
+/// assigning to the model. Going through the text view registers the change
+/// with the document's undo manager, which is what makes SwiftUI treat the
+/// document as edited and autosave it — and makes a pull undoable.
+@MainActor
+protocol DocumentTextEditing: AnyObject {
+    func replaceAllText(with text: NSAttributedString, actionName: String)
 }

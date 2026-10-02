@@ -1,8 +1,8 @@
 // This is the COMMITTED template. The real file you'll edit is
 // `SyncConfig.swift` (gitignored). On a fresh clone:
 //
-//     cp Sources/Writey/Sync/SyncConfig.template.swift \
-//        Sources/Writey/Sync/SyncConfig.swift
+//     cp Sources/Writey/Core/Sync/SyncConfig.template.swift \
+//        Sources/Writey/Core/Sync/SyncConfig.swift
 //     # then edit SyncConfig.swift with your real OAuth values
 //
 // xcodegen is configured (via `excludes: "**/*.template.swift"` in
@@ -19,11 +19,6 @@ enum SyncConfig {
     /// The reversed client ID Google shows you in the same dialog.
     /// e.g. "com.googleusercontent.apps.1234567890-abcdefg"
     static let googleOAuthRedirectScheme: String = ""
-
-    static let scopes: [String] = [
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/userinfo.email"
-    ]
 
     static var redirectURI: String {
         "\(googleOAuthRedirectScheme):/oauth2redirect"

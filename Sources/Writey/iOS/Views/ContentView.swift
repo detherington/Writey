@@ -6,6 +6,7 @@ struct ContentView: View {
 
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var editor = EditorController()
     @StateObject private var sync: SyncManager = {
         let manager = SyncManager()
@@ -17,54 +18,54 @@ struct ContentView: View {
     @State private var showingSettingsSheet = false
     @State private var isDistractionFree = false
 
-    /// Max writing column width when in distraction-free mode. Mirrors the
-    /// Mac version exactly so a 13" iPad in landscape gets the same
-    /// comfortable measure as a 27" display.
-    private let distractionFreeColumnWidth: CGFloat = 720
+    /// Same writing-column width as the Mac.
+    private static let distractionFreeColumnWidth: CGFloat = 720
 
     var body: some View {
         VStack(spacing: 0) {
             if !isDistractionFree {
                 EditorToolbar(
-                    document: document,
                     fileURL: fileURL,
                     showingSyncSheet: $showingSyncSheet,
                     showingSettingsSheet: $showingSettingsSheet
                 )
-                Divider().background(theme.chromeStroke)
+                Divider().background(EditorPalette.chromeStroke(colorScheme))
             }
 
-            editorArea
+            // One editor instance in both modes, so toggling distraction-free
+            // keeps the cursor, scroll position, undo and the keyboard.
+            RichTextEditor(document: document, editor: editor)
+                .frame(maxWidth: isDistractionFree ? Self.distractionFreeColumnWidth : .infinity)
+                .frame(maxWidth: .infinity)
 
             if !isDistractionFree, let status = sync.statusLine {
-                Divider().background(theme.chromeStroke)
+                Divider().background(EditorPalette.chromeStroke(colorScheme))
                 Text(status)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
-                    .background(theme.chromeBackground)
+                    .background(EditorPalette.chromeBackground(colorScheme))
             }
         }
-        .background(theme.editorBackground)
+        .background(EditorPalette.background(colorScheme))
         .environmentObject(editor)
         .environmentObject(sync)
-        // Hide the navigation bar DocumentGroup wraps us in, the status
-        // bar, and the home indicator when we go distraction-free. The
-        // editor's UITextView still gets all touch events — only the
-        // OS-rendered chrome disappears.
+        .focusedSceneObject(editor)
+        .focusedSceneValue(\.syncSheetPresented, $showingSyncSheet)
+        .focusedSceneValue(\.distractionFree, $isDistractionFree)
+        // Distraction-free hides the nav bar DocumentGroup wraps us in, the
+        // status bar and the home indicator.
         .toolbar(isDistractionFree ? .hidden : .visible, for: .navigationBar)
-        .statusBar(hidden: isDistractionFree)
+        .statusBarHidden(isDistractionFree)
         .persistentSystemOverlays(isDistractionFree ? .hidden : .automatic)
+        .animation(.easeInOut(duration: 0.2), value: isDistractionFree)
         .overlay(alignment: .topTrailing) {
-            if isDistractionFree {
-                exitButton
-            }
+            if isDistractionFree { exitButton }
         }
         .sheet(isPresented: $showingSyncSheet) {
             GoogleSyncSheet(document: document, fileURL: fileURL)
-                .environmentObject(theme)
                 .environmentObject(auth)
                 .environmentObject(sync)
         }
@@ -73,44 +74,18 @@ struct ContentView: View {
                 .environmentObject(theme)
                 .environmentObject(auth)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .writeyToggleDistractionFree)) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isDistractionFree.toggle()
-            }
-        }
+        .onAppear { sync.textEditor = editor }
     }
 
-    @ViewBuilder
-    private var editorArea: some View {
-        if isDistractionFree {
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                RichTextEditor(text: $document.attributedText)
-                    .frame(maxWidth: distractionFreeColumnWidth)
-                Spacer(minLength: 0)
-            }
-            .background(theme.editorBackground)
-            .environmentObject(theme)
-            .environmentObject(editor)
-        } else {
-            RichTextEditor(text: $document.attributedText)
-                .background(theme.editorBackground)
-                .environmentObject(theme)
-                .environmentObject(editor)
-        }
-    }
-
-    /// Discreet escape hatch for touch users — sits at low opacity so it
-    /// doesn't intrude, brightens on hover (iPad pointer) or press.
+    /// Discreet way out for touch users: low opacity, lifts under the iPad
+    /// pointer. Escape also exits.
     private var exitButton: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isDistractionFree = false
-            }
+            isDistractionFree = false
         } label: {
             Image(systemName: "arrow.down.right.and.arrow.up.left")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .padding(12)
                 .background(.thinMaterial, in: Circle())
         }

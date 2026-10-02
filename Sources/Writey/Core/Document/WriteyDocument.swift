@@ -41,7 +41,11 @@ final class WriteyDocument: ReferenceFileDocument {
         [.rtf]
     }
 
-    @Published var attributedText: NSAttributedString
+    /// Deliberately not `@Published`: the text view owns live editing and
+    /// copies its storage here on every change. Publishing would re-render
+    /// the whole window per keystroke. Change tracking for autosave comes
+    /// from the undo manager, not from this property.
+    var attributedText: NSAttributedString
 
     init() {
         self.attributedText = NSAttributedString(
@@ -95,11 +99,25 @@ final class WriteyDocument: ReferenceFileDocument {
     // MARK: - Default styling
 
     static func defaultBodyAttributes() -> [NSAttributedString.Key: Any] {
+        [
+            .font: font(forHeadingLevel: 0),
+            .paragraphStyle: defaultParagraphStyle()
+        ]
+    }
+
+    static func defaultParagraphStyle() -> NSMutableParagraphStyle {
         let para = NSMutableParagraphStyle()
         para.lineHeightMultiple = 1.4
-        return [
-            .font: PlatformFont.systemFont(ofSize: 16, weight: .regular),
-            .paragraphStyle: para
-        ]
+        return para
+    }
+
+    /// 0 = body, 1 = title, 2 = heading, 3 = subheading.
+    static func font(forHeadingLevel level: Int) -> PlatformFont {
+        switch level {
+        case 1:  return .systemFont(ofSize: 28, weight: .bold)
+        case 2:  return .systemFont(ofSize: 22, weight: .semibold)
+        case 3:  return .systemFont(ofSize: 18, weight: .semibold)
+        default: return .systemFont(ofSize: 16, weight: .regular)
+        }
     }
 }

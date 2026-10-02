@@ -6,6 +6,7 @@ struct ContentView: View {
 
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var editor = EditorController()
     @StateObject private var sync: SyncManager = {
         let manager = SyncManager()
@@ -16,120 +17,90 @@ struct ContentView: View {
     @State private var isDistractionFree = false
     @State private var hostWindow: NSWindow?
 
-    /// Max writing column width when in distraction-free mode. Mirrors what
-    /// iA Writer / Bear / Ulysses do — keeps measure comfortable on wide
-    /// monitors instead of letting prose sprawl edge-to-edge.
-    private let distractionFreeColumnWidth: CGFloat = 720
+    /// Writing-column width in distraction-free mode, as in iA Writer /
+    /// Ulysses: keeps line length comfortable on wide displays.
+    private static let distractionFreeColumnWidth: CGFloat = 720
 
     var body: some View {
         VStack(spacing: 0) {
             if !isDistractionFree {
-                EditorToolbar(
-                    document: document,
-                    fileURL: fileURL,
-                    showingSyncSheet: $showingSyncSheet
-                )
-                Divider().background(theme.chromeStroke)
+                EditorToolbar(fileURL: fileURL, showingSyncSheet: $showingSyncSheet)
+                Divider().background(EditorPalette.chromeStroke(colorScheme))
             }
 
-            editorArea
+            // One editor instance in both modes, so toggling distraction-free
+            // keeps the cursor, scroll position and undo history.
+            RichTextEditor(document: document, editor: editor)
+                .frame(maxWidth: isDistractionFree ? Self.distractionFreeColumnWidth : .infinity)
+                .frame(maxWidth: .infinity)
 
             if !isDistractionFree, let status = sync.statusLine {
-                Divider().background(theme.chromeStroke)
+                Divider().background(EditorPalette.chromeStroke(colorScheme))
                 Text(status)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
-                    .background(theme.chromeBackground)
+                    .background(EditorPalette.chromeBackground(colorScheme))
             }
         }
-        .background(theme.editorBackground)
+        .background(EditorPalette.background(colorScheme))
         .environmentObject(editor)
         .environmentObject(sync)
+        .focusedSceneObject(editor)
+        .focusedSceneValue(\.syncSheetPresented, $showingSyncSheet)
+        .focusedSceneValue(\.distractionFree, $isDistractionFree)
         .frame(minWidth: 640, minHeight: 480)
         .sheet(isPresented: $showingSyncSheet) {
-            GoogleSyncSheet(
-                document: document,
-                fileURL: fileURL
-            )
-            .environmentObject(theme)
-            .environmentObject(auth)
-            .environmentObject(sync)
+            GoogleSyncSheet(document: document, fileURL: fileURL)
+                .environmentObject(auth)
+                .environmentObject(sync)
         }
         .background(WindowAccessor { window in
             hostWindow = window
-            theme.paint(window: window)
-            applyDistractionFreeChrome(isDistractionFree, to: window)
+            applyWindowChrome()
         })
-        .onChange(of: theme.theme) { _, _ in
-            if let window = hostWindow { theme.paint(window: window) }
-        }
-        .onChange(of: isDistractionFree) { _, df in
-            if let window = hostWindow {
-                applyDistractionFreeChrome(df, to: window)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .writeyToggleDistractionFree)) { _ in
-            // Only the key window responds, so toggling from the menu bar
-            // affects just the focused document — not every open window.
-            guard let window = hostWindow, window.isKeyWindow else { return }
-            isDistractionFree.toggle()
-        }
+        .onChange(of: colorScheme) { applyWindowChrome() }
+        .onChange(of: isDistractionFree) { applyWindowChrome() }
+        .onAppear { sync.textEditor = editor }
     }
 
-    @ViewBuilder
-    private var editorArea: some View {
-        if isDistractionFree {
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                RichTextEditor(text: $document.attributedText)
-                    .frame(maxWidth: distractionFreeColumnWidth)
-                Spacer(minLength: 0)
-            }
-            .background(theme.editorBackground)
-            .environmentObject(theme)
-            .environmentObject(editor)
-        } else {
-            RichTextEditor(text: $document.attributedText)
-                .background(theme.editorBackground)
-                .environmentObject(theme)
-                .environmentObject(editor)
-        }
-    }
-
-    /// Makes the title bar transparent and hides the document title when
-    /// entering distraction-free mode. Traffic lights stay so users can
-    /// still close / minimize / zoom.
-    ///
-    /// We intentionally don't add `.fullSizeContentView` to the style mask
-    /// — keeping the editor below the (now-invisible) title bar means the
-    /// traffic lights never overlap typed text.
-    private func applyDistractionFreeChrome(_ on: Bool, to window: NSWindow) {
-        window.titlebarAppearsTransparent = on
-        window.titleVisibility = on ? .hidden : .visible
-        window.isMovableByWindowBackground = on
-        theme.paint(window: window)
+    /// Paints the window to match the editor surface, and makes the title
+    /// bar transparent with no title in distraction-free mode. Traffic lights
+    /// stay. No `.fullSizeContentView`, so they never overlap the text.
+    private func applyWindowChrome() {
+        guard let window = hostWindow else { return }
+        theme.paint(window: window, scheme: colorScheme)
+        window.titlebarAppearsTransparent = isDistractionFree
+        window.titleVisibility = isDistractionFree ? .hidden : .visible
+        window.isMovableByWindowBackground = isDistractionFree
     }
 }
 
-/// Tiny helper that hands us the hosting NSWindow once it exists, so we can
-/// override its backgroundColor and chrome.
+/// Reports the hosting NSWindow once it exists.
 private struct WindowAccessor: NSViewRepresentable {
-    var callback: (NSWindow) -> Void
+    var onWindow: (NSWindow) -> Void
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            if let window = view.window { callback(window) }
-        }
+    func makeNSView(context: Context) -> ReportingView {
+        let view = ReportingView()
+        view.onWindow = onWindow
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            if let window = nsView.window { callback(window) }
+    func updateNSView(_ view: ReportingView, context: Context) {
+        view.onWindow = onWindow
+    }
+
+    final class ReportingView: NSView {
+        var onWindow: ((NSWindow) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            // Deferred: this can fire mid view-update, where setting @State
+            // isn't allowed.
+            DispatchQueue.main.async { [weak self] in self?.onWindow?(window) }
         }
     }
 }

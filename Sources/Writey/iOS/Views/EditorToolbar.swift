@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct EditorToolbar: View {
-    @ObservedObject var document: WriteyDocument
     var fileURL: URL?
     @Binding var showingSyncSheet: Bool
     @Binding var showingSettingsSheet: Bool
@@ -10,14 +9,13 @@ struct EditorToolbar: View {
     @EnvironmentObject var editor: EditorController
     @EnvironmentObject var sync: SyncManager
     @EnvironmentObject var auth: GoogleAuth
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 8) {
-            Group {
-                FormatToggle(systemImage: "bold", isOn: editor.isBold) { editor.toggleBold() }
-                FormatToggle(systemImage: "italic", isOn: editor.isItalic) { editor.toggleItalic() }
-                FormatToggle(systemImage: "underline", isOn: editor.isUnderline) { editor.toggleUnderline() }
-            }
+            FormatToggle(systemImage: "bold", label: "Bold", isOn: editor.isBold) { editor.toggleBold() }
+            FormatToggle(systemImage: "italic", label: "Italic", isOn: editor.isItalic) { editor.toggleItalic() }
+            FormatToggle(systemImage: "underline", label: "Underline", isOn: editor.isUnderline) { editor.toggleUnderline() }
 
             Divider().frame(height: 18).padding(.horizontal, 4)
 
@@ -31,23 +29,19 @@ struct EditorToolbar: View {
                 Label("Style", systemImage: "textformat")
             }
 
-            FormatToggle(systemImage: "list.bullet", isOn: false) { editor.toggleBulletList() }
-            FormatToggle(systemImage: "list.number", isOn: false) { editor.toggleNumberedList() }
+            FormatToggle(systemImage: "list.bullet", label: "Bulleted List", isOn: editor.isBulletList) {
+                editor.toggleBulletList()
+            }
+            FormatToggle(systemImage: "list.number", label: "Numbered List", isOn: editor.isNumberedList) {
+                editor.toggleNumberedList()
+            }
 
             Spacer()
 
             Menu {
-                ForEach(AppTheme.allCases) { option in
-                    Button {
-                        theme.theme = option
-                    } label: {
-                        HStack {
-                            Text(option.label)
-                            if theme.theme == option {
-                                Spacer()
-                                Image(systemName: "checkmark")
-                            }
-                        }
+                Picker("Appearance", selection: $theme.theme) {
+                    ForEach(AppTheme.allCases) { option in
+                        Text(option.label).tag(option)
                     }
                 }
             } label: {
@@ -55,8 +49,7 @@ struct EditorToolbar: View {
                     .frame(width: 28, height: 28)
                     .padding(6)
             }
-            .menuStyle(.borderlessButton)
-            .help("Appearance")
+            .accessibilityLabel("Appearance")
 
             Button {
                 showingSyncSheet = true
@@ -78,10 +71,11 @@ struct EditorToolbar: View {
             } label: {
                 Image(systemName: "gearshape")
             }
+            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(theme.chromeBackground)
+        .background(EditorPalette.chromeBackground(colorScheme))
     }
 
     private var syncLabel: String {
@@ -90,9 +84,6 @@ struct EditorToolbar: View {
         return "Link"
     }
 
-    /// Icon reflects the *effective* theme (so "Match System" shows the
-    /// resolved appearance), but the menu shows what the user actually
-    /// picked via the checkmark.
     private var themeIcon: String {
         switch theme.theme {
         case .system: return "circle.lefthalf.filled"
@@ -104,6 +95,7 @@ struct EditorToolbar: View {
 
 private struct FormatToggle: View {
     let systemImage: String
+    let label: String
     let isOn: Bool
     let action: () -> Void
 
@@ -116,8 +108,10 @@ private struct FormatToggle: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(isOn ? Color.accentColor.opacity(0.22) : Color.clear)
                 )
-                .foregroundColor(isOn ? .accentColor : .primary)
+                .foregroundStyle(isOn ? Color.accentColor : Color.primary)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
