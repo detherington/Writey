@@ -58,38 +58,46 @@ final class WriteyDocument: ReferenceFileDocument {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
+        self.attributedText = try Self.decode(data, as: configuration.contentType)
+    }
 
-        // Anything that conforms to plain text — .txt, .md, .swift, etc. —
-        // gets loaded as UTF-8. Conformance check instead of `== .plainText`
-        // so subtypes like markdown (net.daringfireball.markdown) route here
-        // instead of falling through to the RTF path and crashing.
-        if configuration.contentType.conforms(to: .plainText) {
-            let text = String(data: data, encoding: .utf8) ?? ""
-            self.attributedText = NSAttributedString(
-                string: text,
-                attributes: WriteyDocument.defaultBodyAttributes()
+    func snapshot(contentType: UTType) throws -> Data {
+        try Self.encode(attributedText, as: contentType)
+    }
+
+    // MARK: - Reading and writing
+
+    /// Anything that conforms to plain text — .txt, .md, .swift, etc. — is
+    /// read as UTF-8. Conformance check instead of `== .plainText` so
+    /// subtypes like markdown (net.daringfireball.markdown) route here
+    /// instead of falling through to the RTF path and crashing.
+    static func decode(_ data: Data, as contentType: UTType) throws -> NSAttributedString {
+        if contentType.conforms(to: .plainText) {
+            return NSAttributedString(
+                string: String(decoding: data, as: UTF8.self),
+                attributes: defaultBodyAttributes()
             )
-            return
         }
-
-        let attr = try NSAttributedString(
+        return try NSAttributedString(
             data: data,
             options: [.documentType: NSAttributedString.DocumentType.rtf],
             documentAttributes: nil
         )
-        self.attributedText = attr
     }
 
-    func snapshot(contentType: UTType) throws -> Data {
-        // Strip theme-only colors before persisting — what's on disk should
-        // be portable (open it in TextEdit / Pages and it renders in the
-        // app's default colors, not Writey's dark-mode grey).
-        let canonical = attributedText.writeyCanonicalForm()
-        let range = NSRange(location: 0, length: canonical.length)
-        let attrs: [NSAttributedString.DocumentAttributeKey: Any] = [
-            .documentType: NSAttributedString.DocumentType.rtf
-        ]
-        return try canonical.data(from: range, documentAttributes: attrs)
+    /// Plain-text types are written back as plain text, so editing a .md or
+    /// .txt file never fills it with RTF. Everything else is RTF, with
+    /// theme-only colors stripped so the file renders in other apps' default
+    /// colors, not Writey's dark-mode grey.
+    static func encode(_ text: NSAttributedString, as contentType: UTType) throws -> Data {
+        if contentType.conforms(to: .plainText) {
+            return Data(text.string.utf8)
+        }
+        let canonical = text.writeyCanonicalForm()
+        return try canonical.data(
+            from: NSRange(location: 0, length: canonical.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )
     }
 
     func fileWrapper(snapshot: Data, configuration: WriteConfiguration) throws -> FileWrapper {

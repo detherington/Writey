@@ -92,11 +92,16 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # Enable Files-app integration so users can open .rtf documents
-        # in Writey, and the DocumentGroup-managed files appear in
-        # iCloud Drive / On My iPad.
-        INFOPLIST_KEY_UISupportsDocumentBrowser: YES
+        # "Open in Writey" from the Files app edits the original file in
+        # place rather than a copy.
         INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+    entitlements:
+      path: Sources/Writey/iOS/Writey-iOS.entitlements
+      properties:
+        # iCloud Drive ▸ Writey — where the document list lives.
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.writey.Writey]
+        com.apple.developer.ubiquity-container-identifiers: [iCloud.com.writey.Writey]
+        com.apple.developer.icloud-services: [CloudDocuments]
     info:
       path: Sources/Writey/iOS/Info.plist
       properties:
@@ -104,12 +109,16 @@ targets:
         # encryption regs, so saying so here saves you clicking through
         # the encryption-compliance dialog on every TestFlight upload.
         ITSAppUsesNonExemptEncryption: false
-        # New documents land in Writey's own Documents folder; without file
-        # sharing the File Provider can't see that folder, so creating a
-        # document fails with "Unable to Import Document" (DocumentManager
-        # error 1). This also lists it in Files as On My iPad ▸ Writey,
-        # alongside the Sync Backups folder.
+        # Shows the local Documents folder in Files as On My iPhone ▸ Writey:
+        # Sync Backups live there, and so do documents when iCloud Drive is off.
         UIFileSharingEnabled: true
+        # Publishes the iCloud container's Documents folder as a "Writey"
+        # folder in iCloud Drive, visible in Files and in Finder on the Mac.
+        NSUbiquitousContainers:
+          iCloud.com.writey.Writey:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: Writey
+            NSUbiquitousContainerSupportedFolderLevels: Any
         CFBundleDocumentTypes:
           - CFBundleTypeName: Rich Text Document
             CFBundleTypeRole: Editor

@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct ContentView: View {
-    @ObservedObject var document: WriteyDocument
-    var fileURL: URL?
+    @ObservedObject var file: WriteyFile
+    var startsEditing = false
 
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
+    @EnvironmentObject var library: DocumentLibrary
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @StateObject private var editor = EditorController()
@@ -21,6 +22,12 @@ struct ContentView: View {
 
     /// Same writing-column width as the Mac.
     private static let distractionFreeColumnWidth: CGFloat = 720
+
+    @State private var showingRename = false
+    @State private var newName = ""
+
+    private var document: WriteyDocument { file.model }
+    private var fileURL: URL? { file.fileURL }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,11 +49,13 @@ struct ContentView: View {
 
             // One editor instance in both modes, so toggling distraction-free
             // keeps the cursor, scroll position, undo and the keyboard.
-            RichTextEditor(document: document, editor: editor)
-                .frame(maxWidth: isDistractionFree ? Self.distractionFreeColumnWidth : .infinity)
-                .frame(maxWidth: .infinity)
+            RichTextEditor(document: document, revision: file.revision, editor: editor) { [file] in
+                file.updateChangeCount(.done)
+            }
+            .frame(maxWidth: isDistractionFree ? Self.distractionFreeColumnWidth : .infinity)
+            .frame(maxWidth: .infinity)
 
-            if !isDistractionFree, let status = sync.statusLine {
+            if !isDistractionFree, let status = file.saveError ?? sync.statusLine {
                 Divider().background(EditorPalette.chromeStroke(colorScheme))
                 Text(status)
                     .font(.caption)
@@ -58,6 +67,28 @@ struct ContentView: View {
             }
         }
         .background(EditorPalette.background(colorScheme))
+        .navigationTitle(file.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarRole(.editor)
+        // An alert rather than the system's inline title rename, which
+        // committed partway through typing.
+        .toolbarTitleMenu {
+            Button {
+                newName = file.name
+                showingRename = true
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+        }
+        .alert("Rename Document", isPresented: $showingRename) {
+            TextField("Name", text: $newName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                let url = file.fileURL
+                let name = newName
+                Task { await library.rename(url, to: name) }
+            }
+        }
         .toolbar {
             // At compact width the formatting bar has no room for these.
             if sizeClass == .compact {
@@ -75,9 +106,9 @@ struct ContentView: View {
         .focusedSceneObject(editor)
         .focusedSceneValue(\.syncSheetPresented, $showingSyncSheet)
         .focusedSceneValue(\.distractionFree, $isDistractionFree)
-        // Distraction-free hides the nav bar DocumentGroup wraps us in, the
-        // status bar and the home indicator.
-        .background(NavigationBarHider(isHidden: isDistractionFree))
+        // Distraction-free hides the navigation bar, the status bar and the
+        // home indicator.
+        .toolbar(isDistractionFree ? .hidden : .visible, for: .navigationBar)
         .statusBarHidden(isDistractionFree)
         .persistentSystemOverlays(isDistractionFree ? .hidden : .automatic)
         .animation(.easeInOut(duration: 0.2), value: isDistractionFree)
@@ -91,7 +122,13 @@ struct ContentView: View {
                 .environmentObject(theme)
                 .environmentObject(auth)
         }
-        .onAppear { sync.textEditor = editor }
+        .onAppear {
+            sync.textEditor = editor
+            if startsEditing {
+                // After the text view is in the window, or it can't take focus.
+                Task { @MainActor in editor.focus() }
+            }
+        }
     }
 
     /// Discreet way out for touch users: low opacity, lifts under the iPad
@@ -112,21 +149,5 @@ struct ContentView: View {
         .padding(.trailing, 16)
         .accessibilityLabel("Exit distraction-free mode")
         .keyboardShortcut(.escape, modifiers: [])
-    }
-}
-
-/// DocumentGroup's navigation bar ignores `.toolbar(.hidden, for:
-/// .navigationBar)`, so this hides it on the UINavigationController itself.
-private struct NavigationBarHider: UIViewControllerRepresentable {
-    let isHidden: Bool
-
-    func makeUIViewController(context: Context) -> UIViewController { UIViewController() }
-
-    func updateUIViewController(_ controller: UIViewController, context: Context) {
-        let isHidden = isHidden
-        // Not in the view-controller hierarchy yet on the first pass.
-        Task { @MainActor in
-            controller.navigationController?.setNavigationBarHidden(isHidden, animated: true)
-        }
     }
 }

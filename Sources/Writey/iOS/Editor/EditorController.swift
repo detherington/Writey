@@ -27,6 +27,8 @@ final class EditorController: ObservableObject, DocumentTextEditing {
         refreshState()
     }
 
+    func focus() { textView?.becomeFirstResponder() }
+
     // MARK: - Inline formatting
 
     func toggleBold()      { textView?.toggleBoldface(nil); refreshState() }

@@ -84,4 +84,12 @@ final class SyncLinkStore {
         links.removeValue(forKey: Self.key(for: fileURL))
         save()
     }
+
+    /// Keeps a document's link when Writey itself renames or moves the file.
+    func move(from oldURL: URL, to newURL: URL) {
+        guard var link = links.removeValue(forKey: Self.key(for: oldURL)) else { return }
+        link.localPath = Self.key(for: newURL)
+        links[link.localPath] = link
+        save()
+    }
 }
