@@ -17,17 +17,23 @@
 #   2. Store it in your Keychain so this script can use it without
 #      ever seeing the plaintext password:
 #
-#      xcrun notarytool store-credentials "Picsy" \
-#          --apple-id darrell@theangle.com \
+#      xcrun notarytool store-credentials "notary" \
+#          --apple-id <your-apple-id> \
 #          --team-id 8B29CDK832 \
 #          --password '<paste-app-specific-password-here>'
 #
 #      That writes a Keychain item; the script references it by the
-#      profile name "Picsy" forever after.
+#      profile name "notary" forever after (override with NOTARY_PROFILE).
 #
 # USAGE:
 #   ./scripts/build-dmg.sh              # builds Writey-<version-from-project.yml>.dmg
 #   ./scripts/build-dmg.sh 0.2.0        # overrides the version
+#
+# The signing identity is a SHA-1 hash rather than the cert's name: with
+# more than one "Developer ID Application" cert in the Keychain, codesign
+# rejects the name as ambiguous. List hashes with
+#   security find-identity -v -p codesigning
+# and override with SIGNING_IDENTITY=<hash> on a machine with a different cert.
 #
 set -euo pipefail
 
@@ -45,8 +51,9 @@ if [ ! -f "Sources/Writey/Core/Sync/SyncConfig.swift" ]; then
   exit 1
 fi
 
-IDENTITY="Developer ID Application: Darrell Etherington (8B29CDK832)"
-NOTARY_PROFILE="Picsy"
+# Developer ID Application: Darrell Etherington (8B29CDK832), expires Feb 2027
+IDENTITY="${SIGNING_IDENTITY:-E3A0BC2FDF0A82F824BEFB05E57F6762BE667B0D}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-notary}"
 
 if ! security find-identity -v -p codesigning | grep -q "$IDENTITY"; then
   echo "❌ Couldn't find '$IDENTITY' in your Keychain."

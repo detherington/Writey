@@ -30,6 +30,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writey.Writey
         PRODUCT_NAME: Writey
+        DEVELOPMENT_TEAM: 8B29CDK832       # Paid Apple Developer Program team
         CODE_SIGN_ENTITLEMENTS: Sources/Writey/macOS/Writey.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Writey
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
@@ -41,6 +42,9 @@ targets:
     info:
       path: Sources/Writey/macOS/Info.plist
       properties:
+        # Same as iOS: HTTPS only, so no export-compliance prompt on
+        # each TestFlight / Mac App Store upload.
+        ITSAppUsesNonExemptEncryption: false
         NSSupportsAutomaticTermination: true
         NSSupportsSuddenTermination: true
         CFBundleDocumentTypes:

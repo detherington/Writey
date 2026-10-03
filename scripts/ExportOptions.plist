@@ -4,6 +4,10 @@
 <dict>
     <key>method</key>
     <string>app-store-connect</string>
+    <key>destination</key>
+    <string>upload</string>
+    <key>manageAppVersionAndBuildNumber</key>
+    <false/>
     <key>teamID</key>
     <string>8B29CDK832</string>
     <key>signingStyle</key>
