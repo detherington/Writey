@@ -45,6 +45,12 @@ targets:
         # Same as iOS: HTTPS only, so no export-compliance prompt on
         # each TestFlight / Mac App Store upload.
         ITSAppUsesNonExemptEncryption: false
+        # Same iCloud Drive ▸ Writey folder as iOS (see the iOS target).
+        NSUbiquitousContainers:
+          iCloud.com.writey.Writey:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: Writey
+            NSUbiquitousContainerSupportedFolderLevels: Any
         NSSupportsAutomaticTermination: true
         NSSupportsSuddenTermination: true
         CFBundleDocumentTypes:

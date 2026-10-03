@@ -2,11 +2,12 @@ import Foundation
 import UniformTypeIdentifiers
 
 /// The documents in Writey's folder: iCloud Drive ▸ Writey, or — when iCloud
-/// Drive is off — On My iPhone ▸ Writey.
+/// Drive is off — On My iPhone ▸ Writey (on the Mac, the app's container).
+/// Shared by the iOS home screen and the Mac library window.
 ///
 /// In iCloud an `NSMetadataQuery` keeps the list live, including documents
-/// that exist in iCloud but aren't downloaded yet, and edits made on the
-/// Mac. File operations are coordinated, so an open document follows a
+/// that exist in iCloud but aren't downloaded yet, and edits made on other
+/// devices. File operations are coordinated, so an open document follows a
 /// rename instead of losing its file.
 @MainActor
 final class DocumentLibrary: ObservableObject {
@@ -221,12 +222,23 @@ final class DocumentLibrary: ObservableObject {
     func createDocument() async -> URL? {
         guard let folder = location.folder else { return nil }
         let url = uniqueURL(in: folder, name: "Untitled", extension: "rtf")
+        #if os(iOS)
         let file = WriteyFile(fileURL: url)
         guard await file.save(to: url, for: .forCreating) else {
             lastError = "Couldn't create a new document."
             return nil
         }
         _ = await file.close()
+        #else
+        // The Mac opens documents through DocumentGroup, so write an empty
+        // one directly; the editor window picks it up from there.
+        guard let data = try? WriteyDocument.encode(WriteyDocument().attributedText, as: .rtf),
+              await Task.detached(operation: { Self.coordinatedCreate(data, at: url) }).value == nil
+        else {
+            lastError = "Couldn't create a new document."
+            return nil
+        }
+        #endif
         items.insert(Item(url: url, modified: Date(), isDownloaded: true), at: 0)
         previews[url] = ""
         previewDates[url] = items.first?.modified
@@ -298,6 +310,19 @@ final class DocumentLibrary: ObservableObject {
         return coordinationError ?? failure
     }
 
+    nonisolated private static func coordinatedCreate(_ data: Data, at url: URL) -> Error? {
+        var failure: Error?
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { target in
+            do {
+                try data.write(to: target, options: .withoutOverwriting)
+            } catch {
+                failure = error
+            }
+        }
+        return coordinationError ?? failure
+    }
+
     nonisolated private static func coordinatedDelete(_ url: URL) -> Error? {
         var failure: Error?
         var coordinationError: NSError?
@@ -328,5 +353,12 @@ final class DocumentLibrary: ObservableObject {
             number += 1
         }
         return candidate
+    }
+}
+
+extension DocumentLibrary.Location {
+    var isICloud: Bool {
+        if case .iCloud = self { return true }
+        return false
     }
 }

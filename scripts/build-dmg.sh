@@ -1,8 +1,9 @@
 #!/bin/bash
 #
-# Build a release .app, sign it with your Developer ID Application cert,
-# wrap it in a DMG, sign that, notarize via Apple's notary service, and
-# staple the notarization ticket so the DMG is trusted offline.
+# Archive a release .app, export it signed with your Developer ID
+# Application cert, wrap it in a DMG, sign that, notarize via Apple's
+# notary service, and staple the notarization ticket so the DMG is
+# trusted offline.
 #
 # The result: a DMG you can drop onto any Mac (yours, friends', whatever)
 # and double-click to install with zero Gatekeeper warnings.
@@ -79,39 +80,37 @@ BUILD_DIR="build"
 echo "▸ xcodegen generate"
 xcodegen generate >/dev/null
 
-echo "▸ xcodebuild (Release, Developer ID signed, hardened runtime)"
-xcodebuild \
+# Archive + export rather than a plain signed build: iCloud (the library
+# window's Writey folder) needs a Developer ID provisioning profile in the
+# app, and the export step has Xcode create and embed it. Archives are
+# built without get-task-allow, which the notary service rejects.
+ARCHIVE="$BUILD_DIR/Writey-macOS-devid.xcarchive"
+EXPORT_DIR="$BUILD_DIR/Writey-macOS-devid"
+rm -rf "$ARCHIVE" "$EXPORT_DIR"
+
+echo "▸ archive (Release, hardened runtime)"
+xcodebuild archive \
   -project Writey.xcodeproj \
   -scheme Writey \
   -configuration Release \
-  -destination 'platform=macOS' \
-  -derivedDataPath "$BUILD_DIR" \
-  CODE_SIGN_STYLE=Manual \
-  CODE_SIGN_IDENTITY="$IDENTITY" \
-  DEVELOPMENT_TEAM=8B29CDK832 \
-  PROVISIONING_PROFILE_SPECIFIER="" \
-  OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" \
-  build \
-  | tail -20
+  -destination 'generic/platform=macOS' \
+  -archivePath "$ARCHIVE" \
+  -allowProvisioningUpdates \
+  | tail -3
 
-APP_PATH=$(find "$BUILD_DIR/Build/Products/Release" -maxdepth 2 -name "Writey.app" -type d | head -1)
-if [ -z "$APP_PATH" ]; then
-  echo "❌ Couldn't find built Writey.app"; exit 1
+echo "▸ export (Developer ID signed, with provisioning profile)"
+xcodebuild -exportArchive \
+  -archivePath "$ARCHIVE" \
+  -exportPath "$EXPORT_DIR" \
+  -exportOptionsPlist scripts/ExportOptions-DeveloperID.plist \
+  -allowProvisioningUpdates \
+  | tail -3
+
+APP_PATH="$EXPORT_DIR/Writey.app"
+if [ ! -d "$APP_PATH" ]; then
+  echo "❌ Couldn't find exported Writey.app"; exit 1
 fi
 echo "▸ Built: $APP_PATH"
-
-# Re-sign the .app with our entitlements file explicitly. xcodebuild's
-# `build` action (vs `archive`) leaves `com.apple.security.get-task-allow`
-# = true even in Release config, which Apple's notary service rejects.
-# Our entitlements file doesn't include that key, so this overrides
-# Xcode's auto-injected signature with the right one.
-ENTITLEMENTS_FILE="Sources/Writey/macOS/Writey.entitlements"
-echo "▸ Re-signing .app with explicit Release entitlements (strips get-task-allow)"
-codesign --force --sign "$IDENTITY" \
-  --options=runtime \
-  --timestamp \
-  --entitlements "$ENTITLEMENTS_FILE" \
-  "$APP_PATH"
 
 echo "▸ Verifying .app signature"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH" 2>&1 | tail -5

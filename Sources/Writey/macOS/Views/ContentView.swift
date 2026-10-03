@@ -79,7 +79,7 @@ struct ContentView: View {
 }
 
 /// Reports the hosting NSWindow once it exists.
-private struct WindowAccessor: NSViewRepresentable {
+struct WindowAccessor: NSViewRepresentable {
     var onWindow: (NSWindow) -> Void
 
     func makeNSView(context: Context) -> ReportingView {
