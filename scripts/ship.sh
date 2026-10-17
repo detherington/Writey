@@ -7,9 +7,12 @@
 # Both platforms share one App Store Connect record (bundle ID
 # com.writey.Writey, iOS + macOS) and one build number.
 #
-# Auth: the Apple ID signed into Xcode (Settings ▸ Accounts) for team
-# 8B29CDK832. The export step uploads directly (destination: upload in
-# scripts/ExportOptions.plist), so no App Store Connect API key is needed.
+# Auth: an App Store Connect API key when ASC_KEY_ID, ASC_ISSUER_ID and
+# ASC_KEY_PATH (the .p8) are set, e.g. in ~/.zshrc, as for Fishy Hollow
+# and Super Havoc Squad; there's no sign-in to expire. Otherwise the Apple
+# ID signed into Xcode (Settings ▸ Accounts) for team 8B29CDK832. Either
+# way the export step uploads directly (destination: upload in
+# scripts/ExportOptions.plist).
 #
 # Usage:
 #   ./scripts/ship.sh                  # bumps CURRENT_PROJECT_VERSION, ships iOS + macOS
@@ -31,6 +34,16 @@ for arg in "$@"; do
   esac
 done
 
+# --- App Store Connect sign-in -----------------------------------------
+AUTH=()
+SIGN_IN="Xcode's account"
+if [ -n "${ASC_KEY_ID:-}" ]; then
+  AUTH=(-authenticationKeyPath "${ASC_KEY_PATH:?ASC_KEY_PATH not set}"
+        -authenticationKeyID "$ASC_KEY_ID"
+        -authenticationKeyIssuerID "${ASC_ISSUER_ID:?ASC_ISSUER_ID not set}")
+  SIGN_IN="API key $ASC_KEY_ID"
+fi
+
 # --- pre-flight sanity checks -----------------------------------------
 if [ ! -f "Sources/Writey/Core/Sync/SyncConfig.swift" ]; then
   echo "❌ Sources/Writey/Core/Sync/SyncConfig.swift is missing."
@@ -48,7 +61,7 @@ fi
 
 VERSION=$(awk -F'"' '/MARKETING_VERSION:/ {print $2; exit}' project.yml)
 BUILD=$(awk -F'"' '/CURRENT_PROJECT_VERSION:/ {print $2; exit}' project.yml)
-echo "▸ Shipping Writey $VERSION ($BUILD) → $PLATFORMS"
+echo "▸ Shipping Writey $VERSION ($BUILD) → $PLATFORMS (signing in with $SIGN_IN)"
 
 # --- regenerate --------------------------------------------------------
 echo "▸ xcodegen generate"
@@ -70,7 +83,7 @@ ship() {
     -configuration Release \
     -destination "$dest" \
     -archivePath "$archive" \
-    -allowProvisioningUpdates \
+    -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} \
     | tail -3
 
   if [ ! -d "$archive" ]; then
@@ -82,7 +95,7 @@ ship() {
     -archivePath "$archive" \
     -exportPath "build/Writey-$label-export" \
     -exportOptionsPlist scripts/ExportOptions.plist \
-    -allowProvisioningUpdates \
+    -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} \
     | tail -3
 
   # Stage archive for Xcode Organizer.
