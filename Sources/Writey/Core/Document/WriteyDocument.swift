@@ -31,10 +31,16 @@ final class WriteyDocument: ReferenceFileDocument {
     /// not UTI conformance).
     static var readableContentTypes: [UTType] {
         var types: [UTType] = [.rtf, .plainText]
-        if let markdown = UTType("net.daringfireball.markdown") {
-            types.append(markdown)
+        if let markdownType {
+            types.append(markdownType)
         }
         return types
+    }
+
+    static let markdownType = UTType("net.daringfireball.markdown")
+
+    static func isMarkdown(_ contentType: UTType) -> Bool {
+        markdownType.map(contentType.conforms(to:)) ?? false
     }
 
     static var writableContentTypes: [UTType] {
@@ -67,11 +73,14 @@ final class WriteyDocument: ReferenceFileDocument {
 
     // MARK: - Reading and writing
 
-    /// Anything that conforms to plain text — .txt, .md, .swift, etc. — is
-    /// read as UTF-8. Conformance check instead of `== .plainText` so
-    /// subtypes like markdown (net.daringfireball.markdown) route here
+    /// Markdown is shown formatted (see `MarkdownConverter`). Anything else
+    /// that conforms to plain text — .txt, .swift, etc. — is read as UTF-8.
+    /// Conformance check instead of `== .plainText` so subtypes route here
     /// instead of falling through to the RTF path and crashing.
     static func decode(_ data: Data, as contentType: UTType) throws -> NSAttributedString {
+        if isMarkdown(contentType) {
+            return MarkdownConverter.attributedString(from: String(decoding: data, as: UTF8.self))
+        }
         if contentType.conforms(to: .plainText) {
             return NSAttributedString(
                 string: String(decoding: data, as: UTF8.self),
@@ -85,11 +94,15 @@ final class WriteyDocument: ReferenceFileDocument {
         )
     }
 
-    /// Plain-text types are written back as plain text, so editing a .md or
+    /// Markdown is written back as Markdown, keeping Writey's formatting.
+    /// Other plain-text types are written back as plain text, so editing a
     /// .txt file never fills it with RTF. Everything else is RTF, with
     /// theme-only colors stripped so the file renders in other apps' default
     /// colors, not Writey's dark-mode grey.
     static func encode(_ text: NSAttributedString, as contentType: UTType) throws -> Data {
+        if isMarkdown(contentType) {
+            return Data(MarkdownConverter.markdown(from: text).utf8)
+        }
         if contentType.conforms(to: .plainText) {
             return Data(text.string.utf8)
         }
@@ -118,6 +131,12 @@ final class WriteyDocument: ReferenceFileDocument {
         para.lineHeightMultiple = 1.4
         return para
     }
+
+    // NSTextList marker tokens render as just the glyph; the trailing "."
+    // and tab make items read "1.  First item".
+    static let bulletListFormat = NSTextList.MarkerFormat(rawValue: "{disc}\t")
+    static let numberedListFormat = NSTextList.MarkerFormat(rawValue: "{decimal}.\t")
+    static let listIndent: CGFloat = 24
 
     /// 0 = body, 1 = title, 2 = heading, 3 = subheading.
     static func font(forHeadingLevel level: Int) -> PlatformFont {

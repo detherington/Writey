@@ -22,9 +22,9 @@ struct DocumentListView: View {
     @State private var searchText = ""
     @State private var renaming: DocumentLibrary.Item?
     @State private var newName = ""
-    @State private var deleting: DocumentLibrary.Item?
     @State private var showingImporter = false
     @State private var showingSettings = false
+    @State private var showingRecentlyDeleted = false
 
     var body: some View {
         List {
@@ -40,7 +40,8 @@ struct DocumentListView: View {
                     DocumentRow(item: item, preview: library.previews[item.url])
                 }
                 .swipeActions {
-                    Button(role: .destructive) { deleting = item } label: {
+                    // Recoverable from Recently Deleted, so no confirmation.
+                    Button(role: .destructive) { moveToRecentlyDeleted(item) } label: {
                         Label("Delete", systemImage: "trash")
                     }
                     Button { startRenaming(item) } label: {
@@ -49,7 +50,7 @@ struct DocumentListView: View {
                 }
                 .contextMenu {
                     Button { startRenaming(item) } label: { Label("Rename", systemImage: "pencil") }
-                    Button(role: .destructive) { deleting = item } label: { Label("Delete", systemImage: "trash") }
+                    Button(role: .destructive) { moveToRecentlyDeleted(item) } label: { Label("Delete", systemImage: "trash") }
                 }
             }
             .listRowBackground(EditorPalette.background(colorScheme))
@@ -67,6 +68,9 @@ struct DocumentListView: View {
                 Menu {
                     Button { showingImporter = true } label: {
                         Label("Open from Files…", systemImage: "folder")
+                    }
+                    Button { showingRecentlyDeleted = true } label: {
+                        Label("Recently Deleted", systemImage: "trash")
                     }
                     Button { showingSettings = true } label: {
                         Label("Settings", systemImage: "gearshape")
@@ -91,16 +95,6 @@ struct DocumentListView: View {
                 Task { await library.rename(item.url, to: name) }
             }
         }
-        .confirmationDialog(
-            deleting.map { "Delete “\($0.name)”?" } ?? "",
-            isPresented: isDeleting,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                guard let item = deleting else { return }
-                Task { await library.delete(item.url) }
-            }
-        }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: Self.openableTypes) { result in
             if case .success(let url) = result {
                 path.append(DocumentRoute(url: url, isExternal: true))
@@ -110,6 +104,10 @@ struct DocumentListView: View {
             SettingsView()
                 .environmentObject(theme)
                 .environmentObject(auth)
+        }
+        .sheet(isPresented: $showingRecentlyDeleted) {
+            RecentlyDeletedView()
+                .environmentObject(library)
         }
     }
 
@@ -148,6 +146,10 @@ struct DocumentListView: View {
         }
     }
 
+    private func moveToRecentlyDeleted(_ item: DocumentLibrary.Item) {
+        Task { await library.moveToRecentlyDeleted(item.url) }
+    }
+
     private func startRenaming(_ item: DocumentLibrary.Item) {
         newName = item.name
         renaming = item
@@ -157,7 +159,4 @@ struct DocumentListView: View {
         Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
     }
 
-    private var isDeleting: Binding<Bool> {
-        Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
-    }
 }

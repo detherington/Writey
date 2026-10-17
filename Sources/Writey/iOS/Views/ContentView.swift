@@ -68,6 +68,7 @@ struct ContentView: View {
         }
         .background(EditorPalette.background(colorScheme))
         .navigationTitle(file.name)
+        .navigationSubtitle(editor.wordCount.summary)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         // An alert rather than the system's inline title rename, which

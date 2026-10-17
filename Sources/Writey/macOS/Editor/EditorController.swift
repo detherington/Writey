@@ -18,14 +18,18 @@ final class EditorController: ObservableObject, DocumentTextEditing {
     @Published private(set) var isUnderline = false
     @Published private(set) var isBulletList = false
     @Published private(set) var isNumberedList = false
+    /// Shown as the document's subtitle.
+    @Published private(set) var wordCount = WordCount()
+    private let wordCounter = WordCounter()
 
-    // NSTextList marker tokens render as just the glyph; the trailing "."
-    // and tab make items read "1.  First item".
-    static let bulletFormat = NSTextList.MarkerFormat(rawValue: "{disc}\t")
-    static let numberedFormat = NSTextList.MarkerFormat(rawValue: "{decimal}.\t")
+    static let bulletFormat = WriteyDocument.bulletListFormat
+    static let numberedFormat = WriteyDocument.numberedListFormat
 
     func attach(_ textView: NSTextView) {
         self.textView = textView
+        wordCounter.onUpdate = { [weak self] count in
+            if self?.wordCount != count { self?.wordCount = count }
+        }
         refreshState()
     }
 
@@ -105,7 +109,7 @@ final class EditorController: ObservableObject, DocumentTextEditing {
             style.headIndent = 0
         } else {
             style.textLists = [NSTextList(markerFormat: format, options: 0)]
-            style.headIndent = 24
+            style.headIndent = WriteyDocument.listIndent
         }
         style.firstLineHeadIndent = 0
 
@@ -152,6 +156,7 @@ final class EditorController: ObservableObject, DocumentTextEditing {
             underline: (attributes[.underlineStyle] as? Int ?? 0) != 0,
             lists: (attributes[.paragraphStyle] as? NSParagraphStyle)?.textLists ?? []
         )
+        wordCounter.schedule(text: storage.string, selection: textView.selectedRange())
     }
 
     private func update(bold: Bool, italic: Bool, underline: Bool, lists: [NSTextList]) {

@@ -46,6 +46,7 @@ struct ContentView: View {
             }
         }
         .background(EditorPalette.background(colorScheme))
+        .navigationSubtitle(editor.wordCount.summary)
         .environmentObject(editor)
         .environmentObject(sync)
         .focusedSceneObject(editor)

@@ -17,7 +17,7 @@ struct LibraryView: View {
     @State private var selection = Set<URL>()
     @State private var renaming: DocumentLibrary.Item?
     @State private var newName = ""
-    @State private var deleting: DocumentLibrary.Item?
+    @State private var showingRecentlyDeleted = false
     @State private var hostWindow: NSWindow?
 
     var body: some View {
@@ -49,6 +49,11 @@ struct LibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             library.refresh()
         }
+        .sheet(isPresented: $showingRecentlyDeleted) {
+            RecentlyDeletedView()
+                .environmentObject(library)
+                .preferredColorScheme(theme.preferredColorScheme)
+        }
         .alert("Something went wrong", isPresented: hasError) {
             Button("OK") { library.lastError = nil }
         } message: {
@@ -70,6 +75,14 @@ struct LibraryView: View {
             .frame(maxWidth: 260)
 
             Spacer()
+
+            Button {
+                showingRecentlyDeleted = true
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Recently Deleted")
 
             Button {
                 NSDocumentController.shared.openDocument(nil)
@@ -117,14 +130,15 @@ struct LibraryView: View {
                 Button("Rename…") { startRenaming(item) }
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
                 Divider()
-                Button("Delete…", role: .destructive) { deleting = item }
+                // Recoverable from Recently Deleted, so no confirmation.
+                Button("Delete", role: .destructive) { moveToRecentlyDeleted(item) }
             }
         } primaryAction: { urls in
             // Double-click or Return.
             urls.forEach(open)
         }
         .onDeleteCommand {
-            if let item = item(for: selection) { deleting = item }
+            for url in selection { moveToRecentlyDeleted(url) }
         }
         .overlay { emptyState }
         .alert("Rename Document", isPresented: isRenaming) {
@@ -134,15 +148,6 @@ struct LibraryView: View {
                 guard let item = renaming else { return }
                 let name = newName
                 Task { await library.rename(item.url, to: name) }
-            }
-        }
-        .confirmationDialog(
-            deleting.map { "Delete “\($0.name)”?" } ?? "",
-            isPresented: isDeleting
-        ) {
-            Button("Delete", role: .destructive) {
-                guard let item = deleting else { return }
-                Task { await library.delete(item.url) }
             }
         }
     }
@@ -201,6 +206,15 @@ struct LibraryView: View {
         }
     }
 
+    private func moveToRecentlyDeleted(_ item: DocumentLibrary.Item) {
+        moveToRecentlyDeleted(item.url)
+    }
+
+    private func moveToRecentlyDeleted(_ url: URL) {
+        selection.remove(url)
+        Task { await library.moveToRecentlyDeleted(url) }
+    }
+
     private func startRenaming(_ item: DocumentLibrary.Item) {
         newName = item.name
         renaming = item
@@ -210,9 +224,6 @@ struct LibraryView: View {
         Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
     }
 
-    private var isDeleting: Binding<Bool> {
-        Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
-    }
 
     private var hasError: Binding<Bool> {
         Binding(get: { library.lastError != nil }, set: { if !$0 { library.lastError = nil } })
