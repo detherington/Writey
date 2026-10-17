@@ -21,6 +21,22 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
 
+                Section {
+                    TypographySettings()
+                } header: {
+                    Text("Text")
+                } footer: {
+                    Text("How Writey shows your writing on this device. Documents keep their own formatting.")
+                }
+
+                Section {
+                    FocusSettings()
+                } header: {
+                    Text("Focus")
+                } footer: {
+                    Text(FocusSettings.explanation)
+                }
+
                 Section("Google Docs") {
                     if auth.isSignedIn {
                         HStack {

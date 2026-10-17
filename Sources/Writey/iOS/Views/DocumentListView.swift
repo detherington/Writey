@@ -17,6 +17,7 @@ struct DocumentListView: View {
     @EnvironmentObject var library: DocumentLibrary
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
+    @EnvironmentObject var writing: WritingSettings
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var searchText = ""
@@ -104,6 +105,7 @@ struct DocumentListView: View {
             SettingsView()
                 .environmentObject(theme)
                 .environmentObject(auth)
+                .environmentObject(writing)
         }
         .sheet(isPresented: $showingRecentlyDeleted) {
             RecentlyDeletedView()

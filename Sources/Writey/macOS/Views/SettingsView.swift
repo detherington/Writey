@@ -8,10 +8,12 @@ struct SettingsView: View {
         TabView {
             appearanceTab
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
+            textTab
+                .tabItem { Label("Text", systemImage: "textformat") }
             googleTab
                 .tabItem { Label("Google Docs", systemImage: "doc.text") }
         }
-        .frame(width: 480, height: 320)
+        .frame(width: 480, height: 440)
     }
 
     private var appearanceTab: some View {
@@ -23,6 +25,21 @@ struct SettingsView: View {
             }
             .pickerStyle(.inline)
             Text("Dark mode uses true black (#000000) for OLED and high-contrast comfort.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(20)
+    }
+
+    private var textTab: some View {
+        Form {
+            TypographySettings()
+            Text("How Writey shows your writing on this Mac. Documents keep their own formatting.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Divider()
+            FocusSettings()
+            Text(FocusSettings.explanation)
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

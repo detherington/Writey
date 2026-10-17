@@ -91,6 +91,7 @@ struct DocumentActions: ToolbarContent {
     @Binding var showingSyncSheet: Bool
     @Binding var showingSettingsSheet: Bool
     @Binding var isDistractionFree: Bool
+    @Binding var isFocusMode: Bool
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -103,6 +104,9 @@ struct DocumentActions: ToolbarContent {
                     isDistractionFree = true
                 } label: {
                     Label("Distraction-Free", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                Toggle(isOn: $isFocusMode) {
+                    Label("Focus Mode", systemImage: "scope")
                 }
                 Button {
                     showingSettingsSheet = true

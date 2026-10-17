@@ -21,6 +21,8 @@ final class EditorController: ObservableObject, DocumentTextEditing {
     /// Shown as the document's subtitle.
     @Published private(set) var wordCount = WordCount()
     private let wordCounter = WordCounter()
+    /// The typography the text view shows; set by `RichTextEditor`.
+    var typography: Typography?
 
     static let bulletFormat = WriteyDocument.bulletListFormat
     static let numberedFormat = WriteyDocument.numberedListFormat
@@ -50,10 +52,14 @@ final class EditorController: ObservableObject, DocumentTextEditing {
         let paragraph = currentParagraphRange(in: textView)
         if paragraph.length > 0 {
             editAttributes(in: paragraph, actionName: "Paragraph Style") { storage, range in
-                storage.addAttribute(.font, value: font, range: range)
+                // The style tag decides how the text is shown, so it changes too.
+                storage.addAttributes([.font: font, .writeyTextStyle: level], range: range)
             }
         }
-        textView.typingAttributes[.font] = font
+        var typing = textView.typingAttributes
+        typing[.font] = font
+        typing[.writeyTextStyle] = level
+        textView.typingAttributes = typography?.displayAttributes(typing) ?? typing
         refreshState()
     }
 

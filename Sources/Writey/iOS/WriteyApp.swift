@@ -5,6 +5,7 @@ struct WriteyApp: App {
     @StateObject private var theme = ThemeManager()
     @StateObject private var auth = GoogleAuth()
     @StateObject private var library = DocumentLibrary()
+    @StateObject private var writing = WritingSettings()
 
     var body: some Scene {
         WindowGroup {
@@ -12,13 +13,14 @@ struct WriteyApp: App {
                 .environmentObject(theme)
                 .environmentObject(auth)
                 .environmentObject(library)
+                .environmentObject(writing)
                 .preferredColorScheme(theme.preferredColorScheme)
         }
         .commands {
             TextEditingCommands()
             FormatCommands()
             SyncCommands()
-            ViewCommands()
+            ViewCommands(writing: writing)
             ThemeCommands(theme: theme)
         }
         // No `Settings` scene on iOS; settings open as a sheet.

@@ -98,7 +98,7 @@ enum MarkdownConverter {
             for span in spans where !span.text.isEmpty {
                 var attributes: [NSAttributedString.Key: Any] = [
                     // Headings are already heavy, so bold only applies to body text.
-                    .font: font(baseFont, bold: span.style.strong && !isHeading, italic: span.style.emphasis),
+                    .font: baseFont.writeyWithTraits(bold: span.style.strong && !isHeading, italic: span.style.emphasis),
                     .paragraphStyle: paragraph
                 ]
                 if span.style.underline {
@@ -437,8 +437,8 @@ enum MarkdownConverter {
         paragraph.enumerateAttributes(in: NSRange(location: 0, length: paragraph.length)) { attributes, range, _ in
             let font = attributes[.font] as? PlatformFont
             let style = InlineStyle(
-                strong: !isHeading && font.map(isBold) == true,
-                emphasis: font.map(isItalic) == true,
+                strong: !isHeading && font?.writeyIsBold == true,
+                emphasis: font?.writeyIsItalic == true,
                 underline: (attributes[.underlineStyle] as? Int ?? 0) != 0
             )
             let link = (attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String
@@ -500,32 +500,4 @@ enum MarkdownConverter {
         }
         return groups
     }
-
-    // MARK: - Fonts
-
-    #if canImport(AppKit)
-    private static func isBold(_ font: NSFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.bold) }
-    private static func isItalic(_ font: NSFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.italic) }
-
-    private static func font(_ base: NSFont, bold: Bool, italic: Bool) -> NSFont {
-        var traits = base.fontDescriptor.symbolicTraits
-        if bold { traits.insert(.bold) }
-        if italic { traits.insert(.italic) }
-        guard traits != base.fontDescriptor.symbolicTraits else { return base }
-        return NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: base.pointSize) ?? base
-    }
-    #else
-    private static func isBold(_ font: UIFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.traitBold) }
-    private static func isItalic(_ font: UIFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.traitItalic) }
-
-    private static func font(_ base: UIFont, bold: Bool, italic: Bool) -> UIFont {
-        var traits = base.fontDescriptor.symbolicTraits
-        if bold { traits.insert(.traitBold) }
-        if italic { traits.insert(.traitItalic) }
-        guard traits != base.fontDescriptor.symbolicTraits,
-              let descriptor = base.fontDescriptor.withSymbolicTraits(traits)
-        else { return base }
-        return UIFont(descriptor: descriptor, size: base.pointSize)
-    }
-    #endif
 }

@@ -13,12 +13,15 @@ struct RichTextEditor: UIViewRepresentable {
     let document: WriteyDocument
     let revision: Int
     let editor: EditorController
+    let typography: Typography
+    /// Focus mode's unit, or nil when it's off.
+    let focus: FocusUnit?
     let onEdit: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(editor: editor) }
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textView = WriteyTextView()
         textView.delegate = context.coordinator
         textView.isEditable = true
         textView.isSelectable = true
@@ -37,8 +40,11 @@ struct RichTextEditor: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.onEdit = onEdit
         coordinator.attach(textView)
+        textView.onResize = { [weak coordinator] in coordinator?.viewDidResize() }
         coordinator.applyTheme(context.environment.colorScheme)
+        coordinator.applyTypography(typography)
         coordinator.load(document, revision: revision)
+        coordinator.setFocus(focus)
         editor.attach(textView)
         return textView
     }
@@ -50,6 +56,8 @@ struct RichTextEditor: UIViewRepresentable {
             coordinator.load(document, revision: revision)
         }
         coordinator.applyTheme(context.environment.colorScheme)
+        coordinator.applyTypography(typography)
+        coordinator.setFocus(focus)
     }
 
     // MARK: - Coordinator
@@ -65,6 +73,9 @@ struct RichTextEditor: UIViewRepresentable {
         private(set) weak var loadedDocument: WriteyDocument?
         private(set) var loadedRevision: Int?
         private var appliedScheme: ColorScheme?
+        private var appliedTypography: Typography?
+        private var focusUnit: FocusUnit?
+        private var isDimmed = false
         private var isApplyingNonEdit = false
         private var stateRefreshPending = false
 
@@ -96,7 +107,7 @@ struct RichTextEditor: UIViewRepresentable {
             if textView.textStorage.length == 0 {
                 var attributes = WriteyDocument.defaultBodyAttributes()
                 attributes[.foregroundColor] = storageObserver.textColor
-                textView.typingAttributes = attributes
+                textView.typingAttributes = appliedTypography?.displayAttributes(attributes) ?? attributes
             }
             let location = isReload ? min(selection.location, textView.textStorage.length) : 0
             textView.selectedRange = NSRange(location: location, length: 0)
@@ -119,6 +130,76 @@ struct RichTextEditor: UIViewRepresentable {
             }
             textView.typingAttributes[.foregroundColor] = color
             textView.tintColor = color
+            applyFocus()
+        }
+
+        /// Shows Writey's styles in the reader's typography. Display only —
+        /// the document keeps its standard styles — so not an edit.
+        func applyTypography(_ typography: Typography) {
+            guard typography != appliedTypography, let textView else { return }
+            appliedTypography = typography
+            storageObserver.typography = typography
+            editor.typography = typography
+            let storage = textView.textStorage
+            if storage.length > 0 {
+                withoutMarkingEdited {
+                    storage.beginEditing()
+                    typography.applyDisplay(to: storage, in: NSRange(location: 0, length: storage.length))
+                    storage.endEditing()
+                }
+            }
+            textView.typingAttributes = typography.displayAttributes(textView.typingAttributes)
+        }
+
+        /// Rotation or the keyboard changed the room there is; focus mode
+        /// re-centers the line.
+        func viewDidResize() {
+            if focusUnit != nil { centerCaret() }
+        }
+
+        func setFocus(_ unit: FocusUnit?) {
+            guard unit != focusUnit else { return }
+            focusUnit = unit
+            applyFocus()
+        }
+
+        // MARK: Focus mode
+
+        /// Dims all but the sentence or paragraph being written, and keeps
+        /// its line in the middle of the screen, like a typewriter.
+        private func applyFocus() {
+            guard let textView else { return }
+            if let layoutManager = textView.textLayoutManager, let appliedScheme, focusUnit != nil || isDimmed {
+                let lit = focusUnit.map {
+                    Focus.range(in: textView.textStorage.string as NSString, selection: textView.selectedRange, unit: $0)
+                }
+                Focus.dim(layoutManager, except: lit, color: EditorPalette.text(appliedScheme).withAlphaComponent(0.28))
+                isDimmed = focusUnit != nil
+            }
+            centerCaret()
+        }
+
+        private static let inset: CGFloat = 32
+
+        private func centerCaret() {
+            guard let textView else { return }
+            let chrome = textView.adjustedContentInset
+            let visible = textView.bounds.height - chrome.top - chrome.bottom
+            // Half a screen of room above and below lets the first and last
+            // lines reach the middle too.
+            let vertical = focusUnit == nil ? Self.inset : max(Self.inset, visible / 2)
+            let insets = UIEdgeInsets(top: vertical, left: Self.inset, bottom: vertical, right: Self.inset)
+            if textView.textContainerInset != insets { textView.textContainerInset = insets }
+            guard focusUnit != nil, visible > 0, let caretPosition = textView.selectedTextRange?.end else { return }
+            textView.layoutIfNeeded()
+            let caret = textView.caretRect(for: caretPosition)
+            guard !caret.isNull, !caret.isInfinite else { return }
+            let lowest = -chrome.top
+            let highest = max(lowest, textView.contentSize.height - textView.bounds.height + chrome.bottom)
+            let y = min(max(caret.midY - chrome.top - visible / 2, lowest), highest)
+            if abs(textView.contentOffset.y - y) > 0.5 {
+                textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: y), animated: true)
+            }
         }
 
         private func storageDidChange(_ storage: NSTextStorage) {
@@ -146,7 +227,22 @@ struct RichTextEditor: UIViewRepresentable {
                 guard let self else { return }
                 self.stateRefreshPending = false
                 self.editor.refreshState()
+                self.applyFocus()
             }
         }
+    }
+}
+
+/// Reports size changes — rotation, the keyboard coming and going — so
+/// focus mode can keep the line in the middle.
+final class WriteyTextView: UITextView {
+    var onResize: (() -> Void)?
+    private var lastSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != lastSize else { return }
+        lastSize = bounds.size
+        onResize?()
     }
 }

@@ -6,6 +6,7 @@ struct ContentView: View {
 
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
+    @EnvironmentObject var writing: WritingSettings
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var editor = EditorController()
     @StateObject private var sync: SyncManager = {
@@ -17,10 +18,6 @@ struct ContentView: View {
     @State private var isDistractionFree = false
     @State private var hostWindow: NSWindow?
 
-    /// Writing-column width in distraction-free mode, as in iA Writer /
-    /// Ulysses: keeps line length comfortable on wide displays.
-    private static let distractionFreeColumnWidth: CGFloat = 720
-
     var body: some View {
         VStack(spacing: 0) {
             if !isDistractionFree {
@@ -30,9 +27,15 @@ struct ContentView: View {
 
             // One editor instance in both modes, so toggling distraction-free
             // keeps the cursor, scroll position and undo history.
-            RichTextEditor(document: document, editor: editor)
-                .frame(maxWidth: isDistractionFree ? Self.distractionFreeColumnWidth : .infinity)
-                .frame(maxWidth: .infinity)
+            // Column width keeps line length comfortable on wide windows.
+            RichTextEditor(
+                document: document,
+                editor: editor,
+                typography: writing.typography,
+                focus: writing.focusMode ? writing.focusUnit : nil
+            )
+            .frame(maxWidth: writing.typography.columnWidth.maxWidth ?? .infinity)
+            .frame(maxWidth: .infinity)
 
             if !isDistractionFree, let status = sync.statusLine {
                 Divider().background(EditorPalette.chromeStroke(colorScheme))

@@ -101,7 +101,7 @@ final class WriteyDocument: ReferenceFileDocument {
     /// colors, not Writey's dark-mode grey.
     static func encode(_ text: NSAttributedString, as contentType: UTType) throws -> Data {
         if isMarkdown(contentType) {
-            return Data(MarkdownConverter.markdown(from: text).utf8)
+            return Data(MarkdownConverter.markdown(from: text.writeyCanonicalForm()).utf8)
         }
         if contentType.conforms(to: .plainText) {
             return Data(text.string.utf8)

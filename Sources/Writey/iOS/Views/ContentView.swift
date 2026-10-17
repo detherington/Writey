@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
     @EnvironmentObject var library: DocumentLibrary
+    @EnvironmentObject var writing: WritingSettings
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @StateObject private var editor = EditorController()
@@ -19,9 +20,6 @@ struct ContentView: View {
     @State private var showingSyncSheet = false
     @State private var showingSettingsSheet = false
     @State private var isDistractionFree = false
-
-    /// Same writing-column width as the Mac.
-    private static let distractionFreeColumnWidth: CGFloat = 720
 
     @State private var showingRename = false
     @State private var newName = ""
@@ -49,10 +47,16 @@ struct ContentView: View {
 
             // One editor instance in both modes, so toggling distraction-free
             // keeps the cursor, scroll position, undo and the keyboard.
-            RichTextEditor(document: document, revision: file.revision, editor: editor) { [file] in
+            RichTextEditor(
+                document: document,
+                revision: file.revision,
+                editor: editor,
+                typography: writing.typography,
+                focus: writing.focusMode ? writing.focusUnit : nil
+            ) { [file] in
                 file.updateChangeCount(.done)
             }
-            .frame(maxWidth: isDistractionFree ? Self.distractionFreeColumnWidth : .infinity)
+            .frame(maxWidth: writing.typography.columnWidth.maxWidth ?? .infinity)
             .frame(maxWidth: .infinity)
 
             if !isDistractionFree, let status = file.saveError ?? sync.statusLine {
@@ -98,7 +102,8 @@ struct ContentView: View {
                     sync: sync,
                     showingSyncSheet: $showingSyncSheet,
                     showingSettingsSheet: $showingSettingsSheet,
-                    isDistractionFree: $isDistractionFree
+                    isDistractionFree: $isDistractionFree,
+                    isFocusMode: $writing.focusMode
                 )
             }
         }
@@ -122,6 +127,7 @@ struct ContentView: View {
             SettingsView()
                 .environmentObject(theme)
                 .environmentObject(auth)
+                .environmentObject(writing)
         }
         .onAppear {
             sync.textEditor = editor

@@ -5,6 +5,7 @@ struct WriteyApp: App {
     @StateObject private var theme = ThemeManager()
     @StateObject private var auth = GoogleAuth()
     @StateObject private var library = DocumentLibrary()
+    @StateObject private var writing = WritingSettings()
 
     init() {
         ThemeManager.applyOnLaunch()
@@ -26,6 +27,7 @@ struct WriteyApp: App {
             ContentView(document: configuration.document, fileURL: configuration.fileURL)
                 .environmentObject(theme)
                 .environmentObject(auth)
+                .environmentObject(writing)
                 .preferredColorScheme(theme.preferredColorScheme)
         }
         .defaultLaunchBehavior(.suppressed)
@@ -38,7 +40,7 @@ struct WriteyApp: App {
             TextEditingCommands()
             FormatCommands()
             SyncCommands()
-            ViewCommands()
+            ViewCommands(writing: writing)
             ThemeCommands(theme: theme)
         }
 
@@ -46,6 +48,7 @@ struct WriteyApp: App {
             SettingsView()
                 .environmentObject(theme)
                 .environmentObject(auth)
+                .environmentObject(writing)
                 .preferredColorScheme(theme.preferredColorScheme)
         }
     }

@@ -71,6 +71,7 @@ struct SyncCommands: Commands {
 }
 
 struct ViewCommands: Commands {
+    @ObservedObject var writing: WritingSettings
     @FocusedBinding(\.distractionFree) private var distractionFree
 
     var body: some Commands {
@@ -81,6 +82,18 @@ struct ViewCommands: Commands {
             }
             .keyboardShortcut("d", modifiers: [.shift, .command])
             .disabled(distractionFree == nil)
+
+            Toggle("Focus Mode", isOn: $writing.focusMode)
+                .keyboardShortcut("f", modifiers: [.shift, .command])
+
+            Divider()
+
+            Button("Bigger Text") { writing.makeTextBigger() }
+                .keyboardShortcut("+")
+                .disabled(!writing.canMakeTextBigger)
+            Button("Smaller Text") { writing.makeTextSmaller() }
+                .keyboardShortcut("-")
+                .disabled(!writing.canMakeTextSmaller)
         }
     }
 }
