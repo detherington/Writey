@@ -103,7 +103,7 @@ struct ContentView: View {
                     showingSyncSheet: $showingSyncSheet,
                     showingSettingsSheet: $showingSettingsSheet,
                     isDistractionFree: $isDistractionFree,
-                    isFocusMode: $writing.focusMode
+                    writing: writing
                 )
             }
         }

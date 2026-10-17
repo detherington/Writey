@@ -11,6 +11,7 @@ struct EditorToolbar: View {
 
     @EnvironmentObject var editor: EditorController
     @EnvironmentObject var sync: SyncManager
+    @EnvironmentObject var writing: WritingSettings
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.colorScheme) private var colorScheme
 
@@ -31,6 +32,14 @@ struct EditorToolbar: View {
                     Divider().frame(height: 18).padding(.horizontal, 4)
                     paragraphButtons(iconOnly: false)
                     Spacer()
+                    Menu {
+                        TypographyMenuItems(writing: writing)
+                    } label: {
+                        Image(systemName: "textformat.size")
+                            .frame(width: 28, height: 28)
+                            .padding(6)
+                    }
+                    .accessibilityLabel("Font")
                     ThemeMenu()
                     SyncButton(fileURL: fileURL, sync: sync, showsTitle: true) {
                         showingSyncSheet = true
@@ -91,7 +100,7 @@ struct DocumentActions: ToolbarContent {
     @Binding var showingSyncSheet: Bool
     @Binding var showingSettingsSheet: Bool
     @Binding var isDistractionFree: Bool
-    @Binding var isFocusMode: Bool
+    @ObservedObject var writing: WritingSettings
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -100,12 +109,17 @@ struct DocumentActions: ToolbarContent {
             }
             Menu {
                 ThemePicker(asSubmenu: true)
+                Menu {
+                    TypographyMenuItems(writing: writing, includesFocus: false)
+                } label: {
+                    Label("Font", systemImage: "textformat.size")
+                }
                 Button {
                     isDistractionFree = true
                 } label: {
                     Label("Distraction-Free", systemImage: "arrow.up.left.and.arrow.down.right")
                 }
-                Toggle(isOn: $isFocusMode) {
+                Toggle(isOn: $writing.focusMode) {
                     Label("Focus Mode", systemImage: "scope")
                 }
                 Button {

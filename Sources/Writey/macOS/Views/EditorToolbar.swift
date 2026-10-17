@@ -7,6 +7,7 @@ struct EditorToolbar: View {
     @EnvironmentObject var editor: EditorController
     @EnvironmentObject var sync: SyncManager
     @EnvironmentObject var auth: GoogleAuth
+    @EnvironmentObject var writing: WritingSettings
     @Environment(\.colorScheme) private var colorScheme
 
     // Keyboard shortcuts live on the Format menu, not here, so each is
@@ -37,6 +38,20 @@ struct EditorToolbar: View {
             FormatToggle(systemImage: "list.number", help: "Numbered List (⇧⌘7)", isOn: editor.isNumberedList) {
                 editor.toggleNumberedList()
             }
+
+            Divider().frame(height: 16).padding(.horizontal, 4)
+
+            // How Writey shows text on this Mac; the document keeps its styles.
+            Menu {
+                TypographyMenuItems(writing: writing)
+                Divider()
+                SettingsLink { Text("Text Settings…") }
+            } label: {
+                Label("Font", systemImage: "textformat.size")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Font, size, line spacing and column width")
 
             Spacer()
 

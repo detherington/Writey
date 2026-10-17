@@ -88,6 +88,15 @@ struct ViewCommands: Commands {
 
             Divider()
 
+            Picker("Font", selection: $writing.typography.family) {
+                ForEach(Typography.Family.allCases) { Text($0.label).tag($0) }
+            }
+            Picker("Line Spacing", selection: $writing.typography.lineSpacing) {
+                ForEach(Typography.LineSpacing.allCases) { Text($0.label).tag($0) }
+            }
+            Picker("Column Width", selection: $writing.typography.columnWidth) {
+                ForEach(Typography.ColumnWidth.allCases) { Text($0.label).tag($0) }
+            }
             Button("Bigger Text") { writing.makeTextBigger() }
                 .keyboardShortcut("+")
                 .disabled(!writing.canMakeTextBigger)

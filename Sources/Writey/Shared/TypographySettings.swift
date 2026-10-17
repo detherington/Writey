@@ -39,6 +39,37 @@ struct TypographySettings: View {
     }
 }
 
+/// The same choices as menu items, where people look for a font: the
+/// editor's Font menu, the iPhone's … menu and View in the menu bar. The
+/// fonts sit inline with checkmarks; the rest are submenus.
+struct TypographyMenuItems: View {
+    @ObservedObject var writing: WritingSettings
+    var includesFocus = true
+
+    var body: some View {
+        Picker("Font", selection: $writing.typography.family) {
+            ForEach(Typography.Family.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.inline)
+        Picker("Size", selection: $writing.typography.size) {
+            ForEach(Typography.Size.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.menu)
+        Picker("Line Spacing", selection: $writing.typography.lineSpacing) {
+            ForEach(Typography.LineSpacing.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.menu)
+        Picker("Column Width", selection: $writing.typography.columnWidth) {
+            ForEach(Typography.ColumnWidth.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.menu)
+        if includesFocus {
+            Divider()
+            Toggle("Focus Mode", isOn: $writing.focusMode)
+        }
+    }
+}
+
 /// Focus mode on or off, and whether it follows the sentence or the
 /// paragraph.
 struct FocusSettings: View {
