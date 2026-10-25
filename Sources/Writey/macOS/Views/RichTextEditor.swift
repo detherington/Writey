@@ -13,6 +13,8 @@ struct RichTextEditor: NSViewRepresentable {
     let typography: Typography
     /// Focus mode's unit, or nil when it's off.
     let focus: FocusUnit?
+    /// ⌘-click or right-click on a web link: open it in the reference pane.
+    var openAsReference: (URL) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(editor: editor) }
 
@@ -45,6 +47,7 @@ struct RichTextEditor: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 32, height: 32)
 
         let coordinator = context.coordinator
+        coordinator.openAsReference = openAsReference
         coordinator.attach(textView)
         coordinator.applyTheme(context.environment.colorScheme)
         coordinator.applyTypography(typography)
@@ -56,6 +59,7 @@ struct RichTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let coordinator = context.coordinator
+        coordinator.openAsReference = openAsReference
         if coordinator.loadedDocument !== document {
             coordinator.load(document)
         }
@@ -225,6 +229,16 @@ struct RichTextEditor: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             scheduleStateRefresh()
+        }
+
+        var openAsReference: (URL) -> Void = { _ in }
+
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            ReferenceLinks.click(link, open: openAsReference)
+        }
+
+        func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+            ReferenceLinks.menu(menu, for: view, at: charIndex, open: openAsReference)
         }
 
         /// Deferred so we never publish toolbar state from inside a SwiftUI

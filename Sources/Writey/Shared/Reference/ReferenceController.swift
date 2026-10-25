@@ -13,6 +13,9 @@ final class ReferenceController: ObservableObject {
     enum DocumentState: Equatable {
         case loading
         case loaded(NSAttributedString)
+        /// A file reference, downloaded and ready to preview. The version
+        /// changes when the file does, so the preview reloads.
+        case file(URL, version: Int)
         case unavailable(String)
     }
 
@@ -34,6 +37,7 @@ final class ReferenceController: ObservableObject {
     private(set) var fileURL: URL?
     private var watcher: ReferenceFileWatcher?
     private var loading: Task<Void, Never>?
+    private var fileVersion = 0
 
     static let minimumFraction = 0.2
     static let maximumFraction = 0.7
@@ -140,9 +144,10 @@ final class ReferenceController: ObservableObject {
         case .document(let url):
             if let fileURL, Self.samePath(url, fileURL) { return }
             loadDocument(url)
-            watcher = ReferenceFileWatcher(url: url) { [weak self] event in
-                MainActor.assumeIsolated { self?.fileChanged(event) }
-            }
+            watch(url)
+        case .file(let url):
+            loadFile(url)
+            watch(url)
         case .web(let url):
             let page = page ?? Self.makePage()
             self.page = page
@@ -202,7 +207,7 @@ final class ReferenceController: ObservableObject {
         )
     }
 
-    // MARK: - Reference documents
+    // MARK: - Reference documents and files
 
     private func loadDocument(_ url: URL) {
         if case .loaded = documentState {} else { documentState = .loading }
@@ -213,18 +218,57 @@ final class ReferenceController: ObservableObject {
         }
     }
 
+    private func loadFile(_ url: URL) {
+        if case .file = documentState {} else { documentState = .loading }
+        Task {
+            let isThere = await Task.detached { Self.download(url) }.value
+            guard source == .file(url) else { return }
+            fileVersion += 1
+            documentState = isThere
+                ? .file(url, version: fileVersion)
+                : .unavailable("This file has been moved or deleted.")
+        }
+    }
+
+    private func watch(_ url: URL) {
+        watcher = ReferenceFileWatcher(url: url) { [weak self] event in
+            MainActor.assumeIsolated { self?.fileChanged(event) }
+        }
+    }
+
     private func fileChanged(_ event: ReferenceFileWatcher.Event) {
-        guard case .document(let url) = source else { return }
-        switch event {
-        case .changed:
+        switch (source, event) {
+        case (.document(let url)?, .changed):
             loadDocument(url)
-        case .moved(let newURL):
+        case (.file(let url)?, .changed):
+            loadFile(url)
+        case (.document?, .moved(let newURL)):
             source = .document(newURL)
             watcher?.url = newURL
             remember()
-        case .deleted:
+        case (.file?, .moved(let newURL)):
+            source = .file(newURL)
+            watcher?.url = newURL
+            loadFile(newURL)
+            remember()
+        case (.document?, .deleted):
             documentState = .unavailable("This document has been deleted.")
+        case (.file?, .deleted):
+            documentState = .unavailable("This file has been deleted.")
+        default:
+            break
         }
+    }
+
+    /// Coordinated, so a file in iCloud Drive is downloaded before it's
+    /// previewed. False if it isn't there.
+    nonisolated private static func download(_ url: URL) -> Bool {
+        var isThere = false
+        var error: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &error) { readURL in
+            isThere = FileManager.default.fileExists(atPath: readURL.path)
+        }
+        return isThere
     }
 
     /// Coordinated, so an iCloud document is downloaded first and a save in
@@ -253,6 +297,13 @@ final class ReferenceController: ObservableObject {
 
     static func samePath(_ a: URL, _ b: URL) -> Bool {
         StableFilePath.string(for: a) == StableFilePath.string(for: b)
+    }
+
+    /// A link in the text, if it's a web address the pane can open.
+    nonisolated static func webLink(_ value: Any?) -> URL? {
+        let url = (value as? URL) ?? (value as? String).flatMap { URL(string: $0) }
+        guard let url, ["http", "https"].contains(url.scheme?.lowercased()) else { return nil }
+        return url
     }
 
     /// A web address as typed: with or without "https://", or else words

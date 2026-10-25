@@ -58,10 +58,13 @@ final class DocumentLibrary: ObservableObject {
     @Published private(set) var location: Location = .resolving
     @Published private(set) var hasLoaded = false
     @Published private(set) var deletedItems: [DeletedItem] = []
+    /// Files added for the reference pane, in the References folder.
+    @Published private(set) var referenceFiles: [Item] = []
     @Published var lastError: String?
 
     nonisolated static let documentExtensions: Set<String> = ["rtf", "md", "markdown", "txt", "text"]
     nonisolated static let recentlyDeletedFolderName = "Recently Deleted"
+    nonisolated static let referencesFolderName = "References"
     nonisolated static let retentionDays = 30
     private static let migrationKey = "MovedLocalDocumentsToICloud"
 
@@ -72,6 +75,10 @@ final class DocumentLibrary: ObservableObject {
 
     private var recentlyDeletedFolder: URL? {
         location.folder?.appendingPathComponent(Self.recentlyDeletedFolderName, isDirectory: true)
+    }
+
+    private var referencesFolder: URL? {
+        location.folder?.appendingPathComponent(Self.referencesFolderName, isDirectory: true)
     }
 
     private static var localFolder: URL {
@@ -136,11 +143,27 @@ final class DocumentLibrary: ObservableObject {
     // MARK: - Listing
 
     func refresh() {
-        guard case .local(let folder) = location, let bin = recentlyDeletedFolder else { return }
+        guard case .local(let folder) = location, let bin = recentlyDeletedFolder,
+              let references = referencesFolder else { return }
         Task {
-            let (found, deleted) = await Task.detached { (Self.documents(in: folder), Self.deletedDocuments(in: bin)) }.value
+            let (found, deleted, files) = await Task.detached {
+                (Self.documents(in: folder), Self.deletedDocuments(in: bin), Self.files(in: references))
+            }.value
             apply(found)
             applyDeleted(deleted)
+            applyReferenceFiles(files)
+        }
+    }
+
+    nonisolated private static func files(in folder: URL) -> [Item] {
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey]
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: keys, options: .skipsHiddenFiles
+        )) ?? []
+        return urls.compactMap { url in
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            guard values?.isRegularFile == true else { return nil }
+            return Item(url: url, modified: values?.contentModificationDate ?? .distantPast, isDownloaded: true)
         }
     }
 
@@ -230,14 +253,23 @@ final class DocumentLibrary: ObservableObject {
 
         let folderPath = folder.resolvingSymlinksInPath().path
         let binPath = folder.appendingPathComponent(Self.recentlyDeletedFolderName).resolvingSymlinksInPath().path
+        let referencesPath = folder.appendingPathComponent(Self.referencesFolderName).resolvingSymlinksInPath().path
         var found: [Item] = []
         var deleted: [DeletedItem] = []
+        var files: [Item] = []
         for case let result as NSMetadataItem in query.results {
-            guard let url = result.value(forAttribute: NSMetadataItemURLKey) as? URL, Self.isDocument(url) else { continue }
+            guard let url = result.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
             let parentPath = url.deletingLastPathComponent().resolvingSymlinksInPath().path
-            guard parentPath == folderPath || parentPath == binPath else { continue }
             let status = result.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? String
             let isDownloaded = status == NSMetadataUbiquitousItemDownloadingStatusCurrent
+            if parentPath == referencesPath {
+                // Downloaded when opened: reference files can be large.
+                guard !url.lastPathComponent.hasPrefix(".") else { continue }
+                let modified = result.value(forAttribute: NSMetadataItemFSContentChangeDateKey) as? Date ?? .distantPast
+                files.append(Item(url: url, modified: modified, isDownloaded: isDownloaded))
+                continue
+            }
+            guard Self.isDocument(url), parentPath == folderPath || parentPath == binPath else { continue }
             if !isDownloaded {
                 // Documents are small; fetch them all so they open instantly.
                 try? FileManager.default.startDownloadingUbiquitousItem(at: url)
@@ -251,12 +283,18 @@ final class DocumentLibrary: ObservableObject {
         }
         apply(found)
         applyDeleted(deleted)
+        applyReferenceFiles(files)
     }
 
     private func apply(_ found: [Item]) {
         items = found.sorted { $0.modified > $1.modified }
         hasLoaded = true
         loadPreviews()
+    }
+
+    private func applyReferenceFiles(_ found: [Item]) {
+        let sorted = found.sorted { $0.modified > $1.modified }
+        if sorted != referenceFiles { referenceFiles = sorted }
     }
 
     /// Newest first; anything past 30 days is removed for good.
@@ -509,6 +547,64 @@ final class DocumentLibrary: ObservableObject {
             }
         }
         return coordinationError ?? failure
+    }
+
+    // MARK: - Reference files
+
+    /// Copies a file into the References folder for the reference pane, so
+    /// it syncs with the documents, and returns the copy. Writey's own
+    /// documents and files already in References are used where they are,
+    /// and adding the same file twice reuses the first copy.
+    func addReferenceFile(from source: URL) async throws -> URL {
+        guard let documents = location.folder, let folder = referencesFolder else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let parent = source.deletingLastPathComponent().resolvingSymlinksInPath().path
+        if parent == folder.resolvingSymlinksInPath().path
+            || (parent == documents.resolvingSymlinksInPath().path && Self.isDocument(source)) {
+            return source
+        }
+        // Held across the copy: a file picked or dropped from elsewhere.
+        let accessing = source.startAccessingSecurityScopedResource()
+        defer { if accessing { source.stopAccessingSecurityScopedResource() } }
+        let copy = try await Task.detached { try Self.copy(source, into: folder) }.value
+        refresh()
+        return copy
+    }
+
+    nonisolated private static func copy(_ source: URL, into folder: URL) throws -> URL {
+        let manager = FileManager.default
+        try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let name = source.deletingPathExtension().lastPathComponent
+        let ext = source.pathExtension
+        func named(_ base: String) -> URL {
+            let url = folder.appendingPathComponent(base)
+            return ext.isEmpty ? url : url.appendingPathExtension(ext)
+        }
+        var destination = named(name)
+        var number = 2
+        while manager.fileExists(atPath: destination.path) {
+            if isSameFile(destination, source) { return destination }
+            destination = named("\(name) \(number)")
+            number += 1
+        }
+        var coordinationError: NSError?
+        var copyError: Error?
+        NSFileCoordinator().coordinate(
+            readingItemAt: source, options: .withoutChanges,
+            writingItemAt: destination, options: .forReplacing,
+            error: &coordinationError
+        ) { readURL, writeURL in
+            do { try manager.copyItem(at: readURL, to: writeURL) } catch { copyError = error }
+        }
+        if let error = coordinationError ?? copyError { throw error }
+        return destination
+    }
+
+    /// Same name and size: the same file added again.
+    nonisolated private static func isSameFile(_ a: URL, _ b: URL) -> Bool {
+        let size = { (url: URL) in (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize }
+        return a.lastPathComponent.lowercased() == b.lastPathComponent.lowercased() && size(a) != nil && size(a) == size(b)
     }
 
     // MARK: - Names

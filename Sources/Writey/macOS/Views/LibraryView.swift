@@ -127,6 +127,9 @@ struct LibraryView: View {
         .contextMenu(forSelectionType: URL.self) { urls in
             if let item = item(for: urls) {
                 Button("Open") { open(item.url) }
+                if let name = FrontmostReference.shared.documentName(excluding: item.url) {
+                    Button("Open as Reference for “\(name)”") { FrontmostReference.shared.open(item.url) }
+                }
                 Button("Rename…") { startRenaming(item) }
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
                 Divider()

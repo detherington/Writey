@@ -110,17 +110,35 @@ struct EditorToolbar: View {
 struct DocumentActions: ToolbarContent {
     var fileURL: URL?
     let sync: SyncManager
+    @ObservedObject var reference: ReferenceController
     @Binding var showingSyncSheet: Bool
     @Binding var showingSettingsSheet: Bool
     @Binding var isDistractionFree: Bool
+    @Binding var isShowingReference: Bool
     @ObservedObject var writing: WritingSettings
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
+            // Flips between the writing and its reference.
+            if reference.isVisible {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { isShowingReference.toggle() }
+                } label: {
+                    Label(
+                        isShowingReference ? "Show Writing" : "Show Reference",
+                        systemImage: isShowingReference ? "square.and.pencil" : "text.book.closed"
+                    )
+                }
+            }
             SyncButton(fileURL: fileURL, sync: sync, showsTitle: false) {
                 showingSyncSheet = true
             }
             Menu {
+                Button {
+                    reference.toggleVisible()
+                } label: {
+                    Label(reference.isVisible ? "Hide Reference" : "Show Reference", systemImage: "text.book.closed")
+                }
                 ThemePicker(asSubmenu: true)
                 Menu {
                     TypographyMenuItems(writing: writing, includesFocus: false)

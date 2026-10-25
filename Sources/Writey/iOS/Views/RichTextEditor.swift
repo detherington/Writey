@@ -16,6 +16,8 @@ struct RichTextEditor: UIViewRepresentable {
     let typography: Typography
     /// Focus mode's unit, or nil when it's off.
     let focus: FocusUnit?
+    /// Open as Reference, in the edit menu over a web link.
+    var openAsReference: (URL) -> Void = { _ in }
     let onEdit: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(editor: editor) }
@@ -39,6 +41,7 @@ struct RichTextEditor: UIViewRepresentable {
 
         let coordinator = context.coordinator
         coordinator.onEdit = onEdit
+        coordinator.openAsReference = openAsReference
         coordinator.attach(textView)
         textView.onResize = { [weak coordinator] in coordinator?.viewDidResize() }
         coordinator.applyTheme(context.environment.colorScheme)
@@ -52,6 +55,7 @@ struct RichTextEditor: UIViewRepresentable {
     func updateUIView(_ textView: UITextView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onEdit = onEdit
+        coordinator.openAsReference = openAsReference
         if coordinator.loadedDocument !== document || coordinator.loadedRevision != revision {
             coordinator.load(document, revision: revision)
         }
@@ -218,6 +222,54 @@ struct RichTextEditor: UIViewRepresentable {
             scheduleStateRefresh()
         }
 
+        var openAsReference: (URL) -> Void = { _ in }
+
+        /// Long-press on a web link: Open as Reference in its menu.
+        func textView(_ textView: UITextView, menuConfigurationFor textItem: UITextItem, defaultMenu: UIMenu) -> UITextItem.MenuConfiguration? {
+            ReferenceLinkMenu.configuration(for: textItem, defaultMenu: defaultMenu) { [weak self] in self?.openAsReference($0) }
+        }
+
+        /// The edit menu: Paste and Match Style beside Paste, and Open as
+        /// Reference over a selection or cursor in a web link.
+        func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
+            var actions = suggestedActions
+            if textView.canPerformAction(#selector(UIResponderStandardEditActions.pasteAndMatchStyle(_:)), withSender: nil) {
+                actions = Self.addingPasteAndMatchStyle(to: actions)
+            }
+            let storage = textView.textStorage
+            let index = range.length > 0 || range.location < storage.length ? range.location : range.location - 1
+            if index >= 0, index < storage.length,
+               let url = ReferenceController.webLink(storage.attribute(.link, at: index, effectiveRange: nil)) {
+                actions.insert(ReferenceLinkMenu.action { [weak self] in self?.openAsReference(url) }, at: 0)
+            }
+            return UIMenu(children: actions)
+        }
+
+        /// The touch edit menu leaves it out, though the text view supports it.
+        private static func addingPasteAndMatchStyle(to actions: [UIMenuElement]) -> [UIMenuElement] {
+            let command = UICommand(
+                title: "Paste and Match Style",
+                action: #selector(UIResponderStandardEditActions.pasteAndMatchStyle(_:))
+            )
+            let paste = #selector(UIResponderStandardEditActions.paste(_:))
+            for (index, element) in actions.enumerated() {
+                guard let menu = element as? UIMenu,
+                      let at = menu.children.firstIndex(where: { ($0 as? UICommand)?.action == paste })
+                else { continue }
+                var children = menu.children
+                children.insert(command, at: at + 1)
+                var result = actions
+                result[index] = menu.replacingChildren(children)
+                return result
+            }
+            if let at = actions.firstIndex(where: { ($0 as? UICommand)?.action == paste }) {
+                var result = actions
+                result.insert(command, at: at + 1)
+                return result
+            }
+            return actions + [command]
+        }
+
         /// Deferred so toolbar state is never published from inside a
         /// SwiftUI view update (loads happen during make/updateUIView).
         private func scheduleStateRefresh() {
@@ -234,7 +286,8 @@ struct RichTextEditor: UIViewRepresentable {
 }
 
 /// Reports size changes — rotation, the keyboard coming and going — so
-/// focus mode can keep the line in the middle.
+/// focus mode can keep the line in the middle, and adds Paste and Match
+/// Style.
 final class WriteyTextView: UITextView {
     var onResize: (() -> Void)?
     private var lastSize: CGSize = .zero
@@ -244,5 +297,21 @@ final class WriteyTextView: UITextView {
         guard bounds.size != lastSize else { return }
         lastSize = bounds.size
         onResize?()
+    }
+
+    /// Paste and Match Style (⌥⇧⌘V): the clipboard's text, styled like the
+    /// text around the cursor.
+    override func pasteAndMatchStyle(_ sender: Any?) {
+        guard let text = UIPasteboard.general.string else { return }
+        insertText(text)
+    }
+
+    /// Offered wherever Paste is. (`hasStrings` can say no while Paste
+    /// still says yes, for text copied in another app.)
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(pasteAndMatchStyle(_:)) {
+            return super.canPerformAction(#selector(paste(_:)), withSender: sender)
+        }
+        return super.canPerformAction(action, withSender: sender)
     }
 }

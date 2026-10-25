@@ -37,6 +37,9 @@ final class EditorController: ObservableObject, DocumentTextEditing {
 
     func focus() { textView?.becomeFirstResponder() }
 
+    /// Puts the keyboard away, as when the iPhone flips to the reference.
+    func unfocus() { textView?.resignFirstResponder() }
+
     // MARK: - Inline formatting
 
     func toggleBold()      { textView?.toggleBoldface(nil); refreshState() }

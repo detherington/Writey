@@ -6,6 +6,8 @@ import AppKit
 struct ReferenceTextView: NSViewRepresentable {
     let text: NSAttributedString
     let typography: Typography
+    /// ⌘-click or right-click on a web link: open it in the pane.
+    var onOpenLink: (URL) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -16,6 +18,7 @@ struct ReferenceTextView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
         if let textView = scrollView.documentView as? NSTextView {
+            textView.delegate = context.coordinator
             textView.isEditable = false
             textView.isSelectable = true
             textView.isRichText = true
@@ -27,6 +30,7 @@ struct ReferenceTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        context.coordinator.onOpenLink = onOpenLink
         let scheme = context.environment.colorScheme
         let shown = Coordinator.Shown(text: text, typography: typography, scheme: scheme)
         guard context.coordinator.shown != shown else { return }
@@ -39,7 +43,7 @@ struct ReferenceTextView: NSViewRepresentable {
         ]
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, NSTextViewDelegate {
         /// What's on screen, so SwiftUI updates don't re-lay out the text.
         struct Shown: Equatable {
             let text: NSAttributedString
@@ -51,5 +55,14 @@ struct ReferenceTextView: NSViewRepresentable {
             }
         }
         var shown: Shown?
+        var onOpenLink: (URL) -> Void = { _ in }
+
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            ReferenceLinks.click(link, open: onOpenLink)
+        }
+
+        func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+            ReferenceLinks.menu(menu, for: view, at: charIndex, open: onOpenLink)
+        }
     }
 }

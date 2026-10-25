@@ -1,9 +1,11 @@
 import SwiftUI
 import WebKit
+import UniformTypeIdentifiers
 
-/// The reference beside the writing: another document, read-only, or a
-/// web page. A header like the editor's toolbar holds the address or title,
-/// the source menu, and close.
+/// The reference beside the writing: another document, read-only, a web
+/// page, or a PDF or other file. A header like the editor's toolbar holds
+/// the address or title, the source menu, and close. Files and web links
+/// can be dropped on it.
 struct ReferencePane: View {
     @ObservedObject var reference: ReferenceController
     /// Writey documents that can be opened here (not the one being written).
@@ -12,10 +14,14 @@ struct ReferencePane: View {
     /// Opens the reference document for editing, swapping it with the writing.
     let onEditInstead: (URL) -> Void
 
+    @EnvironmentObject var library: DocumentLibrary
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
     @State private var address = ""
     @FocusState private var addressFocused: Bool
+    @State private var isAddingFile = false
+    @State private var addFileError: String?
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,6 +50,49 @@ struct ReferencePane: View {
             if !addressFocused { address = reference.webAddress }
             reference.pageDidNavigate()
         }
+        .fileImporter(isPresented: $isAddingFile, allowedContentTypes: [.item]) { result in
+            if case .success(let url) = result { addFile(url) }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first else { return false }
+            if url.isFileURL {
+                addFile(url)
+            } else if ["http", "https"].contains(url.scheme?.lowercased()) {
+                reference.open(.web(url))
+            } else {
+                return false
+            }
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .padding(3)
+                    .allowsHitTesting(false)
+            }
+        }
+        .alert("Couldn't Add File", isPresented: Binding(
+            get: { addFileError != nil },
+            set: { if !$0 { addFileError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(addFileError ?? "")
+        }
+    }
+
+    /// A file picked or dropped: copied into the References folder, so it
+    /// syncs with the documents, then shown.
+    private func addFile(_ url: URL) {
+        Task {
+            do {
+                let copy = try await library.addReferenceFile(from: url)
+                reference.open(.forFile(copy))
+            } catch {
+                addFileError = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Header
@@ -51,7 +100,7 @@ struct ReferencePane: View {
     private var showsAddressField: Bool {
         switch reference.source {
         case nil, .web?: return true
-        case .document?: return reference.isEnteringAddress
+        case .document?, .file?: return reference.isEnteringAddress
         }
     }
 
@@ -62,15 +111,15 @@ struct ReferencePane: View {
                     WebNavigationButtons(page: page)
                 }
                 addressField
-            } else if case .document(let url)? = reference.source {
-                Image(systemName: "doc.text")
+            } else if let source = reference.source {
+                Image(systemName: source.systemImage)
                     .foregroundStyle(.secondary)
-                Text(reference.source?.title ?? "")
+                Text(source.title)
                     .font(.headline)
                     .lineLimit(1)
                     .layoutPriority(1)
                 Spacer(minLength: 8)
-                if !reference.isInRecentlyDeleted {
+                if case .document(let url) = source, !reference.isInRecentlyDeleted {
                     editInsteadButton(url)
                 }
             }
@@ -132,6 +181,15 @@ struct ReferencePane: View {
                     }
                 }
             }
+            if !library.referenceFiles.isEmpty {
+                Section("Files") {
+                    ForEach(library.referenceFiles.prefix(20)) { item in
+                        Button { reference.open(.file(item.url)) } label: {
+                            Label(item.name, systemImage: ReferenceSource.systemImage(forFile: item.url))
+                        }
+                    }
+                }
+            }
             Button {
                 address = ""
                 reference.isEnteringAddress = true
@@ -139,12 +197,15 @@ struct ReferencePane: View {
             } label: {
                 Label("Open Web Page…", systemImage: "globe")
             }
+            Button { isAddingFile = true } label: {
+                Label("Add File…", systemImage: "doc.badge.plus")
+            }
             let recents = ReferenceStore.shared.recents.filter { $0 != reference.source }
             if !recents.isEmpty {
                 Menu("Recent") {
                     ForEach(recents, id: \.self) { source in
                         Button { reference.open(source) } label: {
-                            Label(source.title, systemImage: icon(for: source))
+                            Label(source.title, systemImage: source.systemImage)
                         }
                     }
                 }
@@ -158,6 +219,13 @@ struct ReferencePane: View {
                     Label("Open in Browser", systemImage: "safari")
                 }
             }
+            #if os(macOS)
+            if let url = reference.source?.fileURL {
+                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: {
+                    Label("Show in Finder", systemImage: "folder")
+                }
+            }
+            #endif
         } label: {
             Image(systemName: "ellipsis.circle")
         }
@@ -170,25 +238,26 @@ struct ReferencePane: View {
         .accessibilityLabel("Reference Options")
     }
 
-    private func icon(for source: ReferenceSource) -> String {
-        if case .web = source { return "globe" }
-        return "doc.text"
-    }
-
     // MARK: - Content
 
     @ViewBuilder private var content: some View {
         switch reference.source {
         case nil:
             emptyState
-        case .document?:
+        case .document?, .file?:
             switch reference.documentState {
             case .loading:
                 ProgressView()
             case .loaded(let text):
-                ReferenceTextView(text: text, typography: typography)
+                ReferenceTextView(text: text, typography: typography) { reference.open(.web($0)) }
+            case .file(let url, let version):
+                filePreview(url).id(version)
             case .unavailable(let message):
-                ContentUnavailableView("Can't Show This Document", systemImage: "doc.questionmark", description: Text(message))
+                ContentUnavailableView(
+                    reference.source?.isFile == true ? "Can't Show This File" : "Can't Show This Document",
+                    systemImage: "doc.questionmark",
+                    description: Text(message)
+                )
             }
         case .web?:
             if let message = reference.pageError {
@@ -205,23 +274,50 @@ struct ReferencePane: View {
         }
     }
 
+    @ViewBuilder private func filePreview(_ url: URL) -> some View {
+        if UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true {
+            PDFReferenceView(url: url)
+        } else {
+            QuickLookReferenceView(url: url)
+        }
+    }
+
     private var emptyState: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Keep a document or a web page beside your writing. Type an address above, or pick a document.")
+                Text("Keep a document, a web page or a file beside your writing. Type an address above, pick a document, or add a PDF or other file.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 ForEach(documents.prefix(12)) { item in
-                    Button { reference.open(.document(item.url)) } label: {
-                        Label(item.name, systemImage: "doc.text")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    emptyStateRow(item.name, systemImage: "doc.text") { reference.open(.document(item.url)) }
                 }
+                ForEach(library.referenceFiles.prefix(6)) { item in
+                    emptyStateRow(item.name, systemImage: ReferenceSource.systemImage(forFile: item.url)) {
+                        reference.open(.file(item.url))
+                    }
+                }
+                Button { isAddingFile = true } label: {
+                    Label("Add a File…", systemImage: "doc.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .padding(.top, 4)
             }
             .padding(20)
         }
+    }
+
+    private func emptyStateRow(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            // A fixed icon column, so names line up whatever the icon's width.
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .frame(width: 24)
+                Text(title)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

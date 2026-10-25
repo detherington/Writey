@@ -51,7 +51,8 @@ struct ContentView: View {
                     document: document,
                     editor: editor,
                     typography: writing.typography,
-                    focus: writing.focusMode ? writing.focusUnit : nil
+                    focus: writing.focusMode ? writing.focusUnit : nil,
+                    openAsReference: { reference.open(.web($0)) }
                 )
                 .frame(maxWidth: writing.typography.columnWidth.maxWidth ?? .infinity)
                 .frame(maxWidth: .infinity)
@@ -95,7 +96,13 @@ struct ContentView: View {
         .background(WindowAccessor { window in
             hostWindow = window
             applyWindowChrome()
+            if window.isKeyWindow { FrontmostReference.shared.update(reference, in: window) }
         })
+        // The library's Open as Reference goes to the document in front.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+            guard let window = hostWindow, note.object as? NSWindow === window else { return }
+            FrontmostReference.shared.update(reference, in: window)
+        }
         .onChange(of: colorScheme) { applyWindowChrome() }
         .onChange(of: isDistractionFree) { applyWindowChrome() }
         .onChange(of: showsReference) { if showsReference { makeRoomForReference() } }

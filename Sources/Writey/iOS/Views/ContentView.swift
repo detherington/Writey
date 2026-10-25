@@ -31,6 +31,8 @@ struct ContentView: View {
     @State private var showingSyncSheet = false
     @State private var showingSettingsSheet = false
     @State private var isDistractionFree = false
+    /// iPhone: the reference has the screen, in place of the writing.
+    @State private var isShowingReference = false
 
     @State private var showingRename = false
     @State private var newName = ""
@@ -47,7 +49,9 @@ struct ContentView: View {
                     Spacer()
                     exitButton
                 }
-            } else {
+            } else if !showsReferenceFullScreen {
+                // Formatting has nothing to act on while the iPhone shows
+                // the reference.
                 EditorToolbar(
                     fileURL: fileURL,
                     showingSyncSheet: $showingSyncSheet,
@@ -70,19 +74,26 @@ struct ContentView: View {
                     revision: file.revision,
                     editor: editor,
                     typography: writing.typography,
-                    focus: writing.focusMode ? writing.focusUnit : nil
+                    focus: writing.focusMode ? writing.focusUnit : nil,
+                    openAsReference: { url in
+                        reference.open(.web(url))
+                        withAnimation(.easeInOut(duration: 0.25)) { isShowingReference = true }
+                    }
                 ) { [file] in
                     file.updateChangeCount(.done)
                 }
                 .frame(maxWidth: writing.typography.columnWidth.maxWidth ?? .infinity)
                 .frame(maxWidth: .infinity)
             } reference: {
-                ReferencePane(
-                    reference: reference,
-                    documents: library.items.filter { !ReferenceController.samePath($0.url, file.fileURL) },
-                    typography: writing.typography,
-                    onEditInstead: editInstead
-                )
+                referencePane
+            }
+            // iPhone: no room side by side, so the reference covers the
+            // writing. The editor stays underneath, keeping its place.
+            .overlay {
+                if showsReferenceFullScreen {
+                    referencePane
+                        .transition(.move(edge: .trailing))
+                }
             }
 
             if !isDistractionFree, let status = file.saveError ?? sync.statusLine {
@@ -126,9 +137,11 @@ struct ContentView: View {
                 DocumentActions(
                     fileURL: fileURL,
                     sync: sync,
+                    reference: reference,
                     showingSyncSheet: $showingSyncSheet,
                     showingSettingsSheet: $showingSettingsSheet,
                     isDistractionFree: $isDistractionFree,
+                    isShowingReference: $isShowingReference,
                     writing: writing
                 )
             }
@@ -157,6 +170,13 @@ struct ContentView: View {
                 .environmentObject(auth)
                 .environmentObject(writing)
         }
+        // Showing the reference on iPhone flips to it; closing it flips back.
+        .onChange(of: reference.isVisible) {
+            withAnimation(.easeInOut(duration: 0.25)) { isShowingReference = reference.isVisible }
+        }
+        .onChange(of: showsReferenceFullScreen) {
+            if showsReferenceFullScreen { editor.unfocus() }
+        }
         .onAppear {
             sync.textEditor = editor
             if startsEditing {
@@ -170,6 +190,19 @@ struct ContentView: View {
     /// mode puts the reference away.
     private var showsReference: Bool {
         reference.isVisible && !isDistractionFree && sizeClass == .regular
+    }
+
+    private var showsReferenceFullScreen: Bool {
+        reference.isVisible && isShowingReference && !isDistractionFree && sizeClass == .compact
+    }
+
+    private var referencePane: some View {
+        ReferencePane(
+            reference: reference,
+            documents: library.items.filter { !ReferenceController.samePath($0.url, file.fileURL) },
+            typography: writing.typography,
+            onEditInstead: editInstead
+        )
     }
 
     /// The reference becomes the document being written, and this one its
