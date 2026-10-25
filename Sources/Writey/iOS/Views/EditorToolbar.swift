@@ -12,6 +12,7 @@ struct EditorToolbar: View {
     @EnvironmentObject var editor: EditorController
     @EnvironmentObject var sync: SyncManager
     @EnvironmentObject var writing: WritingSettings
+    @EnvironmentObject var reference: ReferenceController
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.colorScheme) private var colorScheme
 
@@ -40,6 +41,18 @@ struct EditorToolbar: View {
                             .padding(6)
                     }
                     .accessibilityLabel("Font")
+                    Button {
+                        reference.toggleVisible()
+                    } label: {
+                        Image(systemName: reference.side == .right ? "sidebar.right" : "sidebar.left")
+                            .frame(width: 28, height: 28)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(reference.isVisible ? Color.accentColor.opacity(0.2) : .clear)
+                            )
+                    }
+                    .accessibilityLabel(reference.isVisible ? "Hide Reference" : "Show Reference")
                     ThemeMenu()
                     SyncButton(fileURL: fileURL, sync: sync, showsTitle: true) {
                         showingSyncSheet = true

@@ -3,6 +3,17 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var file: WriteyFile
     var startsEditing = false
+    @StateObject private var reference: ReferenceController
+    @Environment(\.replaceDocument) private var replaceDocument
+
+    init(file: WriteyFile, startsEditing: Bool = false) {
+        self.file = file
+        self.startsEditing = startsEditing
+        _reference = StateObject(wrappedValue: ReferenceController(
+            fileURL: file.fileURL,
+            defaultSide: WritingSettings.storedReferenceSide
+        ))
+    }
 
     @EnvironmentObject var theme: ThemeManager
     @EnvironmentObject var auth: GoogleAuth
@@ -45,19 +56,34 @@ struct ContentView: View {
                 Divider().background(EditorPalette.chromeStroke(colorScheme))
             }
 
-            // One editor instance in both modes, so toggling distraction-free
-            // keeps the cursor, scroll position, undo and the keyboard.
-            RichTextEditor(
-                document: document,
-                revision: file.revision,
-                editor: editor,
-                typography: writing.typography,
-                focus: writing.focusMode ? writing.focusUnit : nil
-            ) { [file] in
-                file.updateChangeCount(.done)
+            // One editor instance in both modes, and with or without the
+            // reference, so toggling either keeps the cursor, scroll
+            // position, undo and the keyboard.
+            EditorSplitLayout(
+                showsReference: showsReference,
+                side: reference.side,
+                fraction: $reference.fraction,
+                onResizeEnded: reference.commitFraction
+            ) {
+                RichTextEditor(
+                    document: document,
+                    revision: file.revision,
+                    editor: editor,
+                    typography: writing.typography,
+                    focus: writing.focusMode ? writing.focusUnit : nil
+                ) { [file] in
+                    file.updateChangeCount(.done)
+                }
+                .frame(maxWidth: writing.typography.columnWidth.maxWidth ?? .infinity)
+                .frame(maxWidth: .infinity)
+            } reference: {
+                ReferencePane(
+                    reference: reference,
+                    documents: library.items.filter { !ReferenceController.samePath($0.url, file.fileURL) },
+                    typography: writing.typography,
+                    onEditInstead: editInstead
+                )
             }
-            .frame(maxWidth: writing.typography.columnWidth.maxWidth ?? .infinity)
-            .frame(maxWidth: .infinity)
 
             if !isDistractionFree, let status = file.saveError ?? sync.statusLine {
                 Divider().background(EditorPalette.chromeStroke(colorScheme))
@@ -109,7 +135,9 @@ struct ContentView: View {
         }
         .environmentObject(editor)
         .environmentObject(sync)
+        .environmentObject(reference)
         .focusedSceneObject(editor)
+        .focusedSceneObject(reference)
         .focusedSceneValue(\.syncSheetPresented, $showingSyncSheet)
         .focusedSceneValue(\.distractionFree, $isDistractionFree)
         // Distraction-free hides the navigation bar, the status bar and the
@@ -136,6 +164,19 @@ struct ContentView: View {
                 Task { @MainActor in editor.focus() }
             }
         }
+    }
+
+    /// Side by side needs a regular-width window (iPad); distraction-free
+    /// mode puts the reference away.
+    private var showsReference: Bool {
+        reference.isVisible && !isDistractionFree && sizeClass == .regular
+    }
+
+    /// The reference becomes the document being written, and this one its
+    /// reference.
+    private func editInstead(_ url: URL) {
+        reference.prepareSwap(to: url)
+        replaceDocument(url)
     }
 
     /// Discreet way out for touch users: low opacity, lifts under the iPad

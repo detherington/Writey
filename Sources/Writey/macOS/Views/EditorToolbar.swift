@@ -8,6 +8,7 @@ struct EditorToolbar: View {
     @EnvironmentObject var sync: SyncManager
     @EnvironmentObject var auth: GoogleAuth
     @EnvironmentObject var writing: WritingSettings
+    @EnvironmentObject var reference: ReferenceController
     @Environment(\.colorScheme) private var colorScheme
 
     // Keyboard shortcuts live on the Format menu, not here, so each is
@@ -52,6 +53,14 @@ struct EditorToolbar: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("Font, size, line spacing and column width")
+
+            FormatToggle(
+                systemImage: reference.side == .right ? "sidebar.right" : "sidebar.left",
+                help: reference.isVisible ? "Hide Reference (⌥⌘R)" : "Show Reference (⌥⌘R)",
+                isOn: reference.isVisible
+            ) {
+                reference.toggleVisible()
+            }
 
             Spacer()
 

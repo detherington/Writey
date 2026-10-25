@@ -28,6 +28,7 @@ struct WriteyApp: App {
                 .environmentObject(theme)
                 .environmentObject(auth)
                 .environmentObject(writing)
+                .environmentObject(library)
                 .preferredColorScheme(theme.preferredColorScheme)
         }
         .defaultLaunchBehavior(.suppressed)

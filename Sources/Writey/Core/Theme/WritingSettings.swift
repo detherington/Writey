@@ -7,6 +7,8 @@ final class WritingSettings: ObservableObject {
     @Published var typography: Typography { didSet { save() } }
     @Published var focusMode: Bool { didSet { save() } }
     @Published var focusUnit: FocusUnit { didSet { save() } }
+    /// Where a new reference pane opens; each document then remembers its own.
+    @Published var referenceSide: ReferenceSide { didSet { save() } }
 
     private let defaults: UserDefaults
 
@@ -17,6 +19,12 @@ final class WritingSettings: ObservableObject {
         static let columnWidth = "WriteyColumnWidth"
         static let focusMode = "WriteyFocusMode"
         static let focusUnit = "WriteyFocusUnit"
+        static let referenceSide = "WriteyReferenceSide"
+    }
+
+    /// For editor windows set up before they can read the settings object.
+    static var storedReferenceSide: ReferenceSide {
+        UserDefaults.standard.string(forKey: Key.referenceSide).flatMap(ReferenceSide.init) ?? .right
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -29,6 +37,7 @@ final class WritingSettings: ObservableObject {
         self.typography = typography
         self.focusMode = defaults.bool(forKey: Key.focusMode)
         self.focusUnit = defaults.string(forKey: Key.focusUnit).flatMap(FocusUnit.init) ?? .sentence
+        self.referenceSide = defaults.string(forKey: Key.referenceSide).flatMap(ReferenceSide.init) ?? .right
     }
 
     private func save() {
@@ -38,6 +47,7 @@ final class WritingSettings: ObservableObject {
         defaults.set(typography.columnWidth.rawValue, forKey: Key.columnWidth)
         defaults.set(focusMode, forKey: Key.focusMode)
         defaults.set(focusUnit.rawValue, forKey: Key.focusUnit)
+        defaults.set(referenceSide.rawValue, forKey: Key.referenceSide)
     }
 
     // MARK: - View ▸ Bigger / Smaller

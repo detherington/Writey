@@ -150,6 +150,16 @@ struct Typography: Equatable {
         }
     }
 
+    /// A copy of `text` as the editor would show it, for read-only views
+    /// such as the reference pane.
+    func displayed(_ text: NSAttributedString, color: PlatformColor) -> NSAttributedString {
+        let shown = NSMutableAttributedString(attributedString: text)
+        let everything = NSRange(location: 0, length: shown.length)
+        applyDisplay(to: shown, in: everything)
+        shown.addAttribute(.foregroundColor, value: color, range: everything)
+        return shown
+    }
+
     /// The same, for a text view's typing attributes.
     func displayAttributes(_ attributes: [NSAttributedString.Key: Any]) -> [NSAttributedString.Key: Any] {
         guard let font = attributes[.font] as? PlatformFont,

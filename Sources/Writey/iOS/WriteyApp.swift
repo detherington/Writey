@@ -38,9 +38,15 @@ private struct RootView: View {
         NavigationStack(path: $path) {
             DocumentListView(path: $path)
                 .navigationDestination(for: DocumentRoute.self) { route in
-                    DocumentScreen(route: route)
+                    // A new screen when Edit This Instead swaps the route in
+                    // place, so the old document closes and the new one opens.
+                    DocumentScreen(route: route).id(route)
                 }
         }
+        .environment(\.replaceDocument, ReplaceDocumentAction { url in
+            guard !path.isEmpty else { return }
+            path[path.count - 1] = DocumentRoute(url: url)
+        })
         // "Open in Writey" from the Files app or another app's share sheet.
         .onOpenURL { url in
             let inLibrary = library.location.folder.map {
@@ -58,4 +64,16 @@ private struct RootView: View {
     private var hasError: Binding<Bool> {
         Binding(get: { library.lastError != nil }, set: { if !$0 { library.lastError = nil } })
     }
+}
+
+/// Opens another document in place of the one on screen — the reference
+/// pane's Edit This Instead.
+struct ReplaceDocumentAction {
+    var handler: (URL) -> Void = { _ in }
+
+    func callAsFunction(_ url: URL) { handler(url) }
+}
+
+extension EnvironmentValues {
+    @Entry var replaceDocument = ReplaceDocumentAction()
 }

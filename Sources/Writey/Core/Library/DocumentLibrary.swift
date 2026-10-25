@@ -125,6 +125,7 @@ final class DocumentLibrary: ObservableObject {
             }.value
             if moved {
                 SyncLinkStore.shared.move(from: source, to: destination)
+                ReferenceStore.shared.move(from: source, to: destination)
             } else {
                 allMoved = false
             }
@@ -278,6 +279,7 @@ final class DocumentLibrary: ObservableObject {
             for url in urls {
                 if await Task.detached(operation: { Self.coordinatedDelete(url) }).value == nil {
                     SyncLinkStore.shared.remove(fileURL: url)
+                    ReferenceStore.shared.remove(fileURL: url)
                 }
                 purging.remove(url)
             }
@@ -375,6 +377,7 @@ final class DocumentLibrary: ObservableObject {
             return nil
         }
         SyncLinkStore.shared.move(from: url, to: destination)
+        ReferenceStore.shared.move(from: url, to: destination)
         if let index = items.firstIndex(where: { $0.url == url }) {
             items[index] = Item(url: destination, modified: items[index].modified, isDownloaded: items[index].isDownloaded)
         }
@@ -400,6 +403,7 @@ final class DocumentLibrary: ObservableObject {
             return
         }
         SyncLinkStore.shared.move(from: url, to: destination)
+        ReferenceStore.shared.move(from: url, to: destination)
         items.removeAll { $0.url == url }
         previews[url] = nil
         previewDates[url] = nil
@@ -422,6 +426,7 @@ final class DocumentLibrary: ObservableObject {
             return nil
         }
         SyncLinkStore.shared.move(from: item.url, to: destination)
+        ReferenceStore.shared.move(from: item.url, to: destination)
         deletedItems.removeAll { $0.url == item.url }
         let modified = (try? destination.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now
         items.append(Item(url: destination, modified: modified, isDownloaded: true))
@@ -437,6 +442,7 @@ final class DocumentLibrary: ObservableObject {
             return
         }
         SyncLinkStore.shared.remove(fileURL: item.url)
+        ReferenceStore.shared.remove(fileURL: item.url)
         deletedItems.removeAll { $0.url == item.url }
     }
 

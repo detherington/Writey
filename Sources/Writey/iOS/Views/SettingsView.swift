@@ -37,6 +37,14 @@ struct SettingsView: View {
                     Text(FocusSettings.explanation)
                 }
 
+                Section {
+                    ReferenceSettings()
+                } header: {
+                    Text("Reference")
+                } footer: {
+                    Text(ReferenceSettings.explanation)
+                }
+
                 Section("Google Docs") {
                     if auth.isSignedIn {
                         HStack {

@@ -13,7 +13,7 @@ struct SettingsView: View {
             googleTab
                 .tabItem { Label("Google Docs", systemImage: "doc.text") }
         }
-        .frame(width: 480, height: 440)
+        .frame(width: 480, height: 540)
     }
 
     private var appearanceTab: some View {
@@ -40,6 +40,11 @@ struct SettingsView: View {
             Divider()
             FocusSettings()
             Text(FocusSettings.explanation)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Divider()
+            ReferenceSettings()
+            Text(ReferenceSettings.explanation)
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

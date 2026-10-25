@@ -73,6 +73,12 @@ struct SyncCommands: Commands {
 struct ViewCommands: Commands {
     @ObservedObject var writing: WritingSettings
     @FocusedBinding(\.distractionFree) private var distractionFree
+    @FocusedObject private var reference: ReferenceController?
+
+    /// On screen, that is: distraction-free mode puts it away.
+    private var referenceShown: Bool {
+        reference?.isVisible == true && distractionFree != true
+    }
 
     var body: some Commands {
         CommandGroup(after: .toolbar) {
@@ -85,6 +91,24 @@ struct ViewCommands: Commands {
 
             Toggle("Focus Mode", isOn: $writing.focusMode)
                 .keyboardShortcut("f", modifiers: [.shift, .command])
+
+            Divider()
+
+            // Showing the reference leaves distraction-free mode, which
+            // would otherwise keep it hidden.
+            Button(referenceShown ? "Hide Reference" : "Show Reference") {
+                guard let reference else { return }
+                if referenceShown {
+                    reference.isVisible = false
+                } else {
+                    if distractionFree == true { distractionFree = false }
+                    reference.isVisible = true
+                }
+            }
+            .keyboardShortcut("r", modifiers: [.option, .command])
+            .disabled(reference == nil)
+            Button("Swap Reference Side") { reference?.swapSides() }
+                .disabled(reference == nil)
 
             Divider()
 
